@@ -28,4 +28,24 @@ class WhiteBalanceEngineTest {
         val g = WhiteBalanceEngine.gainsFromWhite(Rgb(10, 10, 10))
         assertEquals(WhiteBalanceEngine.MAX_GAIN, g.r, eps)
     }
+
+    @Test fun tempAdjust_zeroIsIdentity() {
+        val base = Gains(1.2, 1.0, 1.5)
+        val g = WhiteBalanceEngine.applyTempAdjust(base, 0.0)
+        assertEquals(1.2, g.r, eps); assertEquals(1.0, g.g, eps); assertEquals(1.5, g.b, eps)
+    }
+
+    @Test fun tempAdjust_warmRaisesRedLowersBlue() {
+        val base = Gains(1.0, 1.0, 1.0)
+        val g = WhiteBalanceEngine.applyTempAdjust(base, 1.0)  // 最暖
+        assertEquals(1.0 * (1 + 0.5), g.r, eps)
+        assertEquals(1.0, g.g, eps)
+        assertEquals(1.0 * (1 - 0.5), g.b, eps)
+    }
+
+    @Test fun displayKelvin_mapping() {
+        assertEquals(5500, WhiteBalanceEngine.displayKelvin(0.0))
+        assertEquals(2800, WhiteBalanceEngine.displayKelvin(1.0))
+        assertEquals(8200, WhiteBalanceEngine.displayKelvin(-1.0))
+    }
 }
