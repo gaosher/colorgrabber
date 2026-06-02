@@ -23,4 +23,23 @@ class ColorAnalyzerTest {
         val hsv = ColorAnalyzer.toHsv(Rgb(0, 255, 0))
         assertEquals(120.0, hsv.h, eps)
     }
+
+    @Test fun lab_white() {
+        val lab = ColorAnalyzer.toLab(Rgb(255, 255, 255))
+        assertEquals(100.0, lab.l, 1e-1)
+        assertEquals(0.0, lab.a, 1e-1)
+        assertEquals(0.0, lab.b, 1e-1)
+    }
+
+    @Test fun lab_black() {
+        val lab = ColorAnalyzer.toLab(Rgb(0, 0, 0))
+        assertEquals(0.0, lab.l, 1e-1)
+    }
+
+    @Test fun lab_red() {
+        val lab = ColorAnalyzer.toLab(Rgb(255, 0, 0))
+        assertEquals(53.24, lab.l, 0.5)
+        assertEquals(80.09, lab.a, 0.5)
+        assertEquals(67.20, lab.b, 0.5)
+    }
 }
