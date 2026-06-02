@@ -13,3 +13,6 @@ local.properties
 keystore.properties
 *.jks
 *.keystore
+
+# 交付产物（APK/说明书导出）
+/交付/
