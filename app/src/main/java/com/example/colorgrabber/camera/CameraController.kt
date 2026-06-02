@@ -85,8 +85,10 @@ class CameraController(
             val opts = CaptureRequestOptions.Builder()
                 .setCaptureRequestOption(CaptureRequest.CONTROL_AWB_MODE,
                     CaptureRequest.CONTROL_AWB_MODE_OFF)
+                // FAST 模式下 HAL 接受 app 提供的 GAINS 并自算 transform；
+                // 不能用 TRANSFORM_MATRIX（那要求同时提供 3x3 矩阵，否则增益会被忽略/失真）。
                 .setCaptureRequestOption(CaptureRequest.COLOR_CORRECTION_MODE,
-                    CaptureRequest.COLOR_CORRECTION_MODE_TRANSFORM_MATRIX)
+                    CaptureRequest.COLOR_CORRECTION_MODE_FAST)
                 .setCaptureRequestOption(CaptureRequest.COLOR_CORRECTION_GAINS,
                     RggbChannelVector(
                         gains.r.toFloat(), gains.g.toFloat(), gains.g.toFloat(), gains.b.toFloat()))
@@ -105,6 +107,20 @@ class CameraController(
                 .setCaptureRequestOption(CaptureRequest.CONTROL_AE_LOCK, true)
                 .setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE,
                     CaptureRequest.CONTROL_AF_MODE_OFF)
+                .build()
+            control.setCaptureRequestOptions(opts)
+        }
+    }
+
+    /** 解锁曝光与对焦，恢复连续自动。 */
+    @SuppressLint("UnsafeOptInUsageError")
+    fun unlockExposureAndFocus() {
+        val control = camera2Control ?: return
+        runCatching {
+            val opts = CaptureRequestOptions.Builder()
+                .setCaptureRequestOption(CaptureRequest.CONTROL_AE_LOCK, false)
+                .setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE,
+                    CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
                 .build()
             control.setCaptureRequestOptions(opts)
         }

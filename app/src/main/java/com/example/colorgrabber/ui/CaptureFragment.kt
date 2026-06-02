@@ -75,7 +75,7 @@ class CaptureFragment : Fragment() {
         b.btnPickWhite.setOnClickListener { pendingPickWhite = true }
         b.btnLock.setOnClickListener {
             locked = !locked
-            if (locked) camera.lockExposureAndFocus()
+            if (locked) camera.lockExposureAndFocus() else camera.unlockExposureAndFocus()
             b.btnLock.text = if (locked) "已锁定" else "锁定"
         }
         b.btnSetRef.setOnClickListener {
@@ -103,6 +103,9 @@ class CaptureFragment : Fragment() {
     private fun onFrame(px: IntArray, w: Int, h: Int) {
         frameCounter++
         if (frameCounter % 6 != 0) return   // 节流：每 6 帧算一次
+        // onFrame 在后台分析线程执行；视图/Activity 已销毁则直接退出，避免 requireActivity() 抛异常。
+        val act = activity ?: return
+        if (!isAdded) return
         val roi = roiForFrame(w, h)
         val res = RoiSampler.sample(px, w, h, roi)
         lastRawRgb = res.mean; lastRoi = roi
@@ -110,13 +113,13 @@ class CaptureFragment : Fragment() {
         if (pendingPickWhite) {
             baseGains = WhiteBalanceEngine.gainsFromWhite(res.mean)
             pendingPickWhite = false
-            requireActivity().runOnUiThread { applyWb() }
+            act.runOnUiThread { applyWb() }
         }
         if (pendingCapture) {
             val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
             bmp.setPixels(px, 0, w, 0, 0, w, h)
             pendingCapture = false
-            requireActivity().runOnUiThread { onFrameCaptured(bmp) }
+            act.runOnUiThread { onFrameCaptured(bmp) }
         }
 
         val gains = effectiveGains()
@@ -126,7 +129,7 @@ class CaptureFragment : Fragment() {
         val lab = ColorAnalyzer.toLab(norm)
         val abs = referenceRgb?.let { ColorAnalyzer.toAbsorbance(norm, it) }
         val overTip = if (res.overexposedRatio > 0.2) "  ⚠过曝" else ""
-        requireActivity().runOnUiThread {
+        act.runOnUiThread {
             if (_b == null) return@runOnUiThread
             b.readout.text = buildString {
                 append("RGB ${norm.r},${norm.g},${norm.b}$overTip\n")
@@ -140,6 +143,7 @@ class CaptureFragment : Fragment() {
     }
 
     private fun applyWb() {
+        if (_b == null) return   // 可能从已 post 的后台回调进入，视图已销毁则跳过
         val gains = effectiveGains()
         val ok = camera.setManualWhiteBalance(gains)
         b.wbInfo.text = "白平衡：色温≈${WhiteBalanceEngine.displayKelvin(tempAdjust)}K  " +
