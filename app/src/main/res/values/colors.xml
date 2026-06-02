@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 旧模板色，保留以防引用 -->
+    <color name="purple_200">#FFBB86FC</color>
+    <color name="purple_500">#FF6200EE</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="teal_700">#FF018786</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- 沉稳墨绿主题 -->
+    <color name="emerald_700">#047857</color>   <!-- 深绿：状态栏/主色变体 -->
+    <color name="emerald_600">#059669</color>   <!-- 主色 -->
+    <color name="emerald_500">#10B981</color>   <!-- 强调/亮绿 -->
+    <color name="ink_900">#FF1F2937</color>     <!-- 主文字 深墨灰 -->
+    <color name="ink_500">#FF6B7280</color>     <!-- 次文字 灰 -->
+    <color name="bg_light">#FFF3F5F4</color>    <!-- 浅灰背景 -->
+    <color name="surface_light">#FFFFFFFF</color>
+
+    <!-- 暗色 -->
+    <color name="emerald_300_dark">#FF34D399</color>
+    <color name="bg_dark">#FF121615</color>
+    <color name="surface_dark">#FF1C211F</color>
+    <color name="ink_100_dark">#FFE5E7EB</color>
+</resources>

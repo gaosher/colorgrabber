@@ -12,7 +12,8 @@ import com.example.colorgrabber.R
 import com.example.colorgrabber.data.Measurement
 
 class MeasurementAdapter(
-    private val onDelete: (Measurement) -> Unit
+    private val onDelete: (Measurement) -> Unit,
+    private val onOpen: (Measurement) -> Unit
 ) : RecyclerView.Adapter<MeasurementAdapter.VH>() {
     private val items = mutableListOf<Measurement>()
 
@@ -42,5 +43,6 @@ class MeasurementAdapter(
         if (m.imageUri != null) h.thumb.setImageURI(Uri.parse(m.imageUri))
         else h.thumb.setImageDrawable(null)
         h.btnDelete.setOnClickListener { onDelete(m) }
+        h.itemView.setOnClickListener { onOpen(m) }
     }
 }

@@ -5,12 +5,18 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuInflater
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.MenuProvider
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import com.example.colorgrabber.R
 import com.example.colorgrabber.camera.CameraController
@@ -21,21 +27,17 @@ import com.example.colorgrabber.color.Rgb
 import com.example.colorgrabber.data.Measurement
 import com.example.colorgrabber.data.MeasurementRepository
 import com.example.colorgrabber.databinding.FragmentCaptureBinding
-import com.example.colorgrabber.wb.Gains
+import com.example.colorgrabber.wb.WbState
 import com.example.colorgrabber.wb.WhiteBalanceEngine
 import kotlinx.coroutines.launch
 
-class CaptureFragment : Fragment() {
+class CaptureFragment : Fragment(), MenuProvider {
     private var _b: FragmentCaptureBinding? = null
     private val b get() = _b!!
     private lateinit var camera: CameraController
     private lateinit var repo: MeasurementRepository
 
-    private var baseGains = Gains(1.0, 1.0, 1.0)   // 点白得到
-    private var tempAdjust = 0.0
-    private var rAdj = 1.0
-    private var gAdj = 1.0
-    private var bAdj = 1.0
+    private val wb = WbState()
     private var locked = false
     private var lastNormRgb: Rgb = Rgb(0, 0, 0)
     private var lastRawRgb: Rgb = Rgb(0, 0, 0)
@@ -52,47 +54,84 @@ class CaptureFragment : Fragment() {
         else Toast.makeText(requireContext(), "需要相机权限，请到设置开启", Toast.LENGTH_LONG).show()
     }
 
+    private val pickImageLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            parentFragmentManager.beginTransaction()
+                .replace(R.id.container, PickFragment.newImport(uri.toString()))
+                .addToBackStack(null).commit()
+        }
+    }
+
     override fun onCreateView(i: LayoutInflater, c: ViewGroup?, s: Bundle?): View {
         _b = FragmentCaptureBinding.inflate(i, c, false); return b.root
     }
 
-    /** 点白基础增益 → 叠加色温微调 → 叠加 RGB 每通道微调。 */
-    private fun effectiveGains(): Gains {
-        val withTemp = WhiteBalanceEngine.applyTempAdjust(baseGains, tempAdjust)
-        return WhiteBalanceEngine.applyRgbAdjust(withTemp, rAdj, gAdj, bAdj)
-    }
-
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        (activity as? AppCompatActivity)?.supportActionBar?.apply {
+            title = "取色 · 取景"; setDisplayHomeAsUpEnabled(false)
+        }
+        requireActivity().addMenuProvider(this, viewLifecycleOwner, Lifecycle.State.RESUMED)
+
         repo = MeasurementRepository(requireContext().applicationContext)
         camera = CameraController(requireContext(), viewLifecycleOwner, b.previewView)
         camera.onFrame = ::onFrame
 
-        b.tempSeek.setOnSeekBarChangeListener(simpleSeek { p -> tempAdjust = (p - 100) / 100.0; applyWb() })
-        b.rSeek.setOnSeekBarChangeListener(simpleSeek { p -> rAdj = 0.5 + p / 200.0; applyWb() })
-        b.gSeek.setOnSeekBarChangeListener(simpleSeek { p -> gAdj = 0.5 + p / 200.0; applyWb() })
-        b.bSeek.setOnSeekBarChangeListener(simpleSeek { p -> bAdj = 0.5 + p / 200.0; applyWb() })
+        b.wbHeader.setOnClickListener {
+            val show = b.wbPanel.visibility != View.VISIBLE
+            b.wbPanel.visibility = if (show) View.VISIBLE else View.GONE
+            b.wbChevron.text = if (show) "▴" else "▾"
+        }
+
+        b.tempSeek.setOnSeekBarChangeListener(simpleSeek { p ->
+            wb.tempAdjust = (p - 100) / 100.0
+            b.tempVal.text = "${WhiteBalanceEngine.displayKelvin(wb.tempAdjust)}K"; applyWb()
+        })
+        b.rSeek.setOnSeekBarChangeListener(simpleSeek { p ->
+            wb.rAdj = 0.5 + p / 200.0; b.rVal.text = "×%.2f".format(wb.rAdj); applyWb()
+        })
+        b.gSeek.setOnSeekBarChangeListener(simpleSeek { p ->
+            wb.gAdj = 0.5 + p / 200.0; b.gVal.text = "×%.2f".format(wb.gAdj); applyWb()
+        })
+        b.bSeek.setOnSeekBarChangeListener(simpleSeek { p ->
+            wb.bAdj = 0.5 + p / 200.0; b.bVal.text = "×%.2f".format(wb.bAdj); applyWb()
+        })
 
         b.btnPickWhite.setOnClickListener { pendingPickWhite = true }
-        b.btnLock.setOnClickListener {
-            locked = !locked
-            if (locked) camera.lockExposureAndFocus() else camera.unlockExposureAndFocus()
-            b.btnLock.text = if (locked) "已锁定" else "锁定"
-        }
         b.btnSetRef.setOnClickListener {
             referenceRgb = lastNormRgb
             Toast.makeText(requireContext(), "已设为参比 I0", Toast.LENGTH_SHORT).show()
         }
         b.btnRecord.setOnClickListener { saveCurrent() }
         b.btnCapture.setOnClickListener { pendingCapture = true }
-        b.btnHistory.setOnClickListener {
-            parentFragmentManager.beginTransaction()
-                .replace(R.id.container, HistoryFragment())
-                .addToBackStack(null).commit()
-        }
+        b.btnImport.setOnClickListener { pickImageLauncher.launch("image/*") }
 
         if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.CAMERA)
             == PackageManager.PERMISSION_GRANTED) camera.start()
         else permLauncher.launch(Manifest.permission.CAMERA)
+    }
+
+    override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
+        inflater.inflate(R.menu.menu_capture, menu)
+        menu.findItem(R.id.action_lock)?.isChecked = locked
+    }
+
+    override fun onMenuItemSelected(item: MenuItem): Boolean = when (item.itemId) {
+        R.id.action_lock -> {
+            locked = !locked
+            item.isChecked = locked
+            if (locked) camera.lockExposureAndFocus() else camera.unlockExposureAndFocus()
+            Toast.makeText(requireContext(), if (locked) "已锁定曝光对焦" else "已解锁", Toast.LENGTH_SHORT).show()
+            true
+        }
+        R.id.action_history -> {
+            parentFragmentManager.beginTransaction()
+                .replace(R.id.container, HistoryFragment())
+                .addToBackStack(null).commit()
+            true
+        }
+        else -> false
     }
 
     private fun roiForFrame(w: Int, h: Int): RoiRect {
@@ -103,7 +142,6 @@ class CaptureFragment : Fragment() {
     private fun onFrame(px: IntArray, w: Int, h: Int) {
         frameCounter++
         if (frameCounter % 6 != 0) return   // 节流：每 6 帧算一次
-        // onFrame 在后台分析线程执行；视图/Activity 已销毁则直接退出，避免 requireActivity() 抛异常。
         val act = activity ?: return
         if (!isAdded) return
         val roi = roiForFrame(w, h)
@@ -111,7 +149,7 @@ class CaptureFragment : Fragment() {
         lastRawRgb = res.mean; lastRoi = roi
 
         if (pendingPickWhite) {
-            baseGains = WhiteBalanceEngine.gainsFromWhite(res.mean)
+            wb.pickWhite(res.mean)
             pendingPickWhite = false
             act.runOnUiThread { applyWb() }
         }
@@ -122,7 +160,7 @@ class CaptureFragment : Fragment() {
             act.runOnUiThread { onFrameCaptured(bmp) }
         }
 
-        val gains = effectiveGains()
+        val gains = wb.effectiveGains()
         val norm = WhiteBalanceEngine.normalize(res.mean, gains)
         lastNormRgb = norm
         val hsv = ColorAnalyzer.toHsv(norm)
@@ -131,24 +169,24 @@ class CaptureFragment : Fragment() {
         val overTip = if (res.overexposedRatio > 0.2) "  ⚠过曝" else ""
         act.runOnUiThread {
             if (_b == null) return@runOnUiThread
-            b.readout.text = buildString {
-                append("RGB ${norm.r},${norm.g},${norm.b}$overTip\n")
-                append("HSV ${"%.0f".format(hsv.h)},${"%.2f".format(hsv.s)},${"%.2f".format(hsv.v)}\n")
-                append("Lab ${"%.1f".format(lab.l)},${"%.1f".format(lab.a)},${"%.1f".format(lab.b)}\n")
-                append(if (abs != null)
-                    "吸光度 R${"%.3f".format(abs.aR)} G${"%.3f".format(abs.aG)} B${"%.3f".format(abs.aB)}"
-                else "吸光度：未标定（先设参比）")
-            }
+            b.swatch.setSwatchColor(norm)
+            b.rgbText.text = "RGB ${norm.r},${norm.g},${norm.b}$overTip"
+            b.hexText.text = hexOf(norm)
+            b.valHsv.text = "${"%.0f".format(hsv.h)} · ${"%.2f".format(hsv.s)} · ${"%.2f".format(hsv.v)}"
+            b.valLab.text = "${"%.1f".format(lab.l)} · ${"%.1f".format(lab.a)} · ${"%.1f".format(lab.b)}"
+            b.valAbs.text = if (abs != null)
+                "R ${"%.3f".format(abs.aR)} · G ${"%.3f".format(abs.aG)} · B ${"%.3f".format(abs.aB)}"
+            else "未标定（先设参比）"
         }
     }
 
     private fun applyWb() {
-        if (_b == null) return   // 可能从已 post 的后台回调进入，视图已销毁则跳过
-        val gains = effectiveGains()
+        if (_b == null) return
+        val gains = wb.effectiveGains()
         val ok = camera.setManualWhiteBalance(gains)
-        b.wbInfo.text = "白平衡：色温≈${WhiteBalanceEngine.displayKelvin(tempAdjust)}K  " +
-            "增益 ${"%.2f".format(gains.r)}/${"%.2f".format(gains.g)}/${"%.2f".format(gains.b)}" +
-            if (!ok) "（软件模式）" else ""
+        b.valWb.text = "色温≈${WhiteBalanceEngine.displayKelvin(wb.tempAdjust)}K · 增益 " +
+            "${"%.2f".format(gains.r)}/${"%.2f".format(gains.g)}/${"%.2f".format(gains.b)}" +
+            if (!ok) "（软件）" else ""
     }
 
     private fun onFrameCaptured(bmp: Bitmap) {
@@ -166,7 +204,7 @@ class CaptureFragment : Fragment() {
 
     private fun saveCurrent() {
         RecordDialog.show(requireContext()) { name, note, degTime ->
-            val gains = effectiveGains()
+            val gains = wb.effectiveGains()
             val hsv = ColorAnalyzer.toHsv(lastNormRgb)
             val lab = ColorAnalyzer.toLab(lastNormRgb)
             val abs = referenceRgb?.let { ColorAnalyzer.toAbsorbance(lastNormRgb, it) }
@@ -179,7 +217,7 @@ class CaptureFragment : Fragment() {
                 hsvH = hsv.h, hsvS = hsv.s, hsvV = hsv.v,
                 labL = lab.l, labA = lab.a, labB = lab.b,
                 absR = abs?.aR, absG = abs?.aG, absB = abs?.aB,
-                gainR = gains.r, gainG = gains.g, gainB = gains.b, tempAdjust = tempAdjust
+                gainR = gains.r, gainG = gains.g, gainB = gains.b, tempAdjust = wb.tempAdjust
             )
             lifecycleScope.launch {
                 repo.insert(m)

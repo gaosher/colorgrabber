@@ -1,0 +1,28 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- 沉稳墨绿 · 浅色 -->
+    <style name="Theme.ColorGrabber" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/emerald_600</item>
+        <item name="colorPrimaryVariant">@color/emerald_700</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorSecondary">@color/emerald_500</item>
+        <item name="colorSecondaryVariant">@color/emerald_700</item>
+        <item name="colorOnSecondary">@color/white</item>
+        <item name="android:colorBackground">@color/bg_light</item>
+        <item name="colorSurface">@color/surface_light</item>
+        <item name="colorOnSurface">@color/ink_900</item>
+        <!-- 滑条/勾选等控件激活色统一为主绿 -->
+        <item name="colorControlActivated">@color/emerald_600</item>
+        <item name="android:textColorPrimary">@color/ink_900</item>
+        <item name="android:textColorSecondary">@color/ink_500</item>
+        <item name="android:statusBarColor">@color/emerald_700</item>
+    </style>
+
+    <!-- 细 Toolbar：白色文字/图标的深色叠层 -->
+    <style name="ToolbarTheme" parent="ThemeOverlay.MaterialComponents.Dark.ActionBar" />
+
+    <!-- 标题字号调小，让顶栏更紧凑 -->
+    <style name="ToolbarTitle" parent="TextAppearance.MaterialComponents.Subtitle1">
+        <item name="android:textSize">16sp</item>
+        <item name="android:textColor">@color/white</item>
+    </style>
+</resources>
