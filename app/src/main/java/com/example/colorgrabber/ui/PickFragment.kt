@@ -79,20 +79,23 @@ class PickFragment : Fragment() {
 
     private fun recordPick() {
         val res = sampleCurrent() ?: return
-        val hsv = ColorAnalyzer.toHsv(res.mean); val lab = ColorAnalyzer.toLab(res.mean)
-        val m = Measurement(
-            timestamp = System.currentTimeMillis(), source = "pick", imageUri = imageUri,
-            roiX = curRoi.x, roiY = curRoi.y, roiW = curRoi.w, roiH = curRoi.h,
-            rawR = res.mean.r, rawG = res.mean.g, rawB = res.mean.b,
-            normR = res.mean.r, normG = res.mean.g, normB = res.mean.b, // 静态图已是成像结果，norm=raw
-            hsvH = hsv.h, hsvS = hsv.s, hsvV = hsv.v,
-            labL = lab.l, labA = lab.a, labB = lab.b,
-            absR = null, absG = null, absB = null,
-            gainR = 1.0, gainG = 1.0, gainB = 1.0, tempAdjust = 0.0
-        )
-        lifecycleScope.launch {
-            repo.insert(m)
-            Toast.makeText(requireContext(), "已记录此点", Toast.LENGTH_SHORT).show()
+        RecordDialog.show(requireContext()) { name, note, degTime ->
+            val hsv = ColorAnalyzer.toHsv(res.mean); val lab = ColorAnalyzer.toLab(res.mean)
+            val m = Measurement(
+                timestamp = System.currentTimeMillis(), sampleName = name, note = note,
+                degradationTime = degTime, source = "pick", imageUri = imageUri,
+                roiX = curRoi.x, roiY = curRoi.y, roiW = curRoi.w, roiH = curRoi.h,
+                rawR = res.mean.r, rawG = res.mean.g, rawB = res.mean.b,
+                normR = res.mean.r, normG = res.mean.g, normB = res.mean.b,
+                hsvH = hsv.h, hsvS = hsv.s, hsvV = hsv.v,
+                labL = lab.l, labA = lab.a, labB = lab.b,
+                absR = null, absG = null, absB = null,
+                gainR = 1.0, gainG = 1.0, gainB = 1.0, tempAdjust = 0.0
+            )
+            lifecycleScope.launch {
+                repo.insert(m)
+                Toast.makeText(requireContext(), "已记录此点", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
