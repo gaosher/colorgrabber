@@ -44,4 +44,21 @@ object ColorAnalyzer {
         val bb = 200.0 * (fy - fz)
         return Lab(l, aa, bb)
     }
+
+    /**
+     * 三通道吸光度 A = -log10(I/I0)。
+     * 样品/参比通道值为 0 时按 0.5 处理，避免 log(0)/除零。
+     */
+    fun toAbsorbance(sample: Rgb, reference: Rgb): Absorbance {
+        fun ch(i: Int, i0: Int): Double {
+            val s = if (i <= 0) 0.5 else i.toDouble()
+            val ref = if (i0 <= 0) 0.5 else i0.toDouble()
+            return -Math.log10(s / ref)
+        }
+        return Absorbance(
+            aR = ch(sample.r, reference.r),
+            aG = ch(sample.g, reference.g),
+            aB = ch(sample.b, reference.b)
+        )
+    }
 }

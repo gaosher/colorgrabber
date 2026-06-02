@@ -42,4 +42,23 @@ class ColorAnalyzerTest {
         assertEquals(80.09, lab.a, 0.5)
         assertEquals(67.20, lab.b, 0.5)
     }
+
+    @Test fun absorbance_halfIntensity() {
+        // I = I0/2 → A = -log10(0.5) ≈ 0.301
+        val a = ColorAnalyzer.toAbsorbance(Rgb(128, 128, 128), Rgb(255, 255, 255))
+        assertEquals(0.301, a.aR, 1e-2)
+        assertEquals(0.301, a.aG, 1e-2)
+        assertEquals(0.301, a.aB, 1e-2)
+    }
+
+    @Test fun absorbance_equalIsZero() {
+        val a = ColorAnalyzer.toAbsorbance(Rgb(200, 200, 200), Rgb(200, 200, 200))
+        assertEquals(0.0, a.aR, 1e-3)
+    }
+
+    @Test fun absorbance_clampsZeroSample() {
+        // 样品为 0 时按 0.5 处理，避免 log(0)
+        val a = ColorAnalyzer.toAbsorbance(Rgb(0, 0, 0), Rgb(255, 255, 255))
+        assertEquals(-Math.log10(0.5 / 255.0), a.aR, 1e-3)
+    }
 }
