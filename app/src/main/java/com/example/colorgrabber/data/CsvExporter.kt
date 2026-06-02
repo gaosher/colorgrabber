@@ -1,5 +1,7 @@
 package com.example.colorgrabber.data
 
+import java.util.Locale
+
 object CsvExporter {
     private val HEADERS = listOf(
         "id", "时间戳", "样品名", "备注", "降解时间点", "来源", "图片URI",
@@ -31,7 +33,7 @@ object CsvExporter {
         return sb.toString()
     }
 
-    private fun fmt(d: Double): String = String.format("%.4f", d)
+    private fun fmt(d: Double): String = String.format(Locale.US, "%.4f", d)
 
     private fun esc(s: String): String =
         if (s.contains(',') || s.contains('"') || s.contains('\n'))
