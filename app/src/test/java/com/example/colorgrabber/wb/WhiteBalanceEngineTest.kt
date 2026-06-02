@@ -1,0 +1,31 @@
+package com.example.colorgrabber.wb
+
+import com.example.colorgrabber.color.Rgb
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class WhiteBalanceEngineTest {
+    private val eps = 1e-3
+
+    @Test fun gains_makeWhitePatchWhite() {
+        // 量到的白偏黄 (240,220,180) → 增益使其归一到 255
+        val g = WhiteBalanceEngine.gainsFromWhite(Rgb(240, 220, 180))
+        assertEquals(255.0 / 240.0, g.r, eps)
+        assertEquals(255.0 / 220.0, g.g, eps)
+        assertEquals(255.0 / 180.0, g.b, eps)
+    }
+
+    @Test fun normalize_appliesGainsAndClamps() {
+        val g = Gains(2.0, 1.0, 1.5)
+        val out = WhiteBalanceEngine.normalize(Rgb(100, 100, 200), g)
+        assertEquals(200, out.r)   // 100*2
+        assertEquals(100, out.g)   // 100*1
+        assertEquals(255, out.b)   // 200*1.5=300 → 钳到 255
+    }
+
+    @Test fun gains_clampedToMax() {
+        // 极暗白 (10,10,10) 不应产生超大增益
+        val g = WhiteBalanceEngine.gainsFromWhite(Rgb(10, 10, 10))
+        assertEquals(WhiteBalanceEngine.MAX_GAIN, g.r, eps)
+    }
+}
