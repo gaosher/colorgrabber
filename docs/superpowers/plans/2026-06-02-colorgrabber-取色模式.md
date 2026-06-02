@@ -1970,6 +1970,268 @@ git commit -m "feat(ui): 拍照存相册 + 精细选区取色"
 
 ---
 
+### Task 6.5：记录对话框（样品名 / 备注 / 降解时间点）
+
+**Files:**
+- Create: `app/src/main/java/com/example/colorgrabber/ui/RecordDialog.kt`
+- Modify: `app/src/main/java/com/example/colorgrabber/ui/CaptureFragment.kt`
+- Modify: `app/src/main/java/com/example/colorgrabber/ui/PickFragment.kt`
+
+> 点「记录」/「记录此点」时先弹对话框收集样品名、备注、降解时间点，再写库。可复用工具函数。
+
+- [ ] **Step 1: 写 `RecordDialog.kt`**
+
+```kotlin
+package com.example.colorgrabber.ui
+
+import android.content.Context
+import android.text.InputType
+import android.widget.EditText
+import android.widget.LinearLayout
+import androidx.appcompat.app.AlertDialog
+
+/** 收集样品名/备注/降解时间点的对话框；确认后回调三元组。 */
+object RecordDialog {
+    fun show(
+        context: Context,
+        onConfirm: (sampleName: String, note: String, degradationTime: String) -> Unit
+    ) {
+        fun field(hint: String) = EditText(context).apply {
+            this.hint = hint
+            inputType = InputType.TYPE_CLASS_TEXT
+        }
+        val nameEt = field("样品名（可空）")
+        val degEt = field("降解时间点（可空，如 30min）")
+        val noteEt = field("备注（可空）")
+        val pad = (16 * context.resources.displayMetrics.density).toInt()
+        val layout = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, 0)
+            addView(nameEt); addView(degEt); addView(noteEt)
+        }
+        AlertDialog.Builder(context)
+            .setTitle("保存记录")
+            .setView(layout)
+            .setPositiveButton("保存") { _, _ ->
+                onConfirm(nameEt.text.toString().trim(),
+                          noteEt.text.toString().trim(),
+                          degEt.text.toString().trim())
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+}
+```
+
+- [ ] **Step 2: 改 `CaptureFragment.saveCurrent()` 先弹对话框**
+
+把 `saveCurrent()` 改为：
+
+```kotlin
+    private fun saveCurrent() {
+        RecordDialog.show(requireContext()) { name, note, degTime ->
+            val gains = effectiveGains()
+            val hsv = ColorAnalyzer.toHsv(lastNormRgb)
+            val lab = ColorAnalyzer.toLab(lastNormRgb)
+            val abs = referenceRgb?.let { ColorAnalyzer.toAbsorbance(lastNormRgb, it) }
+            val m = Measurement(
+                timestamp = System.currentTimeMillis(), sampleName = name, note = note,
+                degradationTime = degTime, source = "live",
+                roiX = lastRoi.x, roiY = lastRoi.y, roiW = lastRoi.w, roiH = lastRoi.h,
+                rawR = lastRawRgb.r, rawG = lastRawRgb.g, rawB = lastRawRgb.b,
+                normR = lastNormRgb.r, normG = lastNormRgb.g, normB = lastNormRgb.b,
+                hsvH = hsv.h, hsvS = hsv.s, hsvV = hsv.v,
+                labL = lab.l, labA = lab.a, labB = lab.b,
+                absR = abs?.aR, absG = abs?.aG, absB = abs?.aB,
+                gainR = gains.r, gainG = gains.g, gainB = gains.b, tempAdjust = tempAdjust
+            )
+            lifecycleScope.launch {
+                repo.insert(m)
+                Toast.makeText(requireContext(), "已记录", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+```
+
+> 说明：`effectiveGains()` 在 Task 6.6 引入；若先做 6.5、后做 6.6，本步暂用
+> `WhiteBalanceEngine.applyTempAdjust(baseGains, tempAdjust)` 代替 `effectiveGains()`，做完 6.6 再替换。
+
+- [ ] **Step 3: 改 `PickFragment.recordPick()` 先弹对话框**
+
+把 `recordPick()` 改为：
+
+```kotlin
+    private fun recordPick() {
+        val res = sampleCurrent() ?: return
+        RecordDialog.show(requireContext()) { name, note, degTime ->
+            val hsv = ColorAnalyzer.toHsv(res.mean); val lab = ColorAnalyzer.toLab(res.mean)
+            val m = Measurement(
+                timestamp = System.currentTimeMillis(), sampleName = name, note = note,
+                degradationTime = degTime, source = "pick", imageUri = imageUri,
+                roiX = curRoi.x, roiY = curRoi.y, roiW = curRoi.w, roiH = curRoi.h,
+                rawR = res.mean.r, rawG = res.mean.g, rawB = res.mean.b,
+                normR = res.mean.r, normG = res.mean.g, normB = res.mean.b,
+                hsvH = hsv.h, hsvS = hsv.s, hsvV = hsv.v,
+                labL = lab.l, labA = lab.a, labB = lab.b,
+                absR = null, absG = null, absB = null,
+                gainR = 1.0, gainG = 1.0, gainB = 1.0, tempAdjust = 0.0
+            )
+            lifecycleScope.launch {
+                repo.insert(m)
+                Toast.makeText(requireContext(), "已记录此点", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+```
+
+- [ ] **Step 4: 编译确认通过**
+
+Run: `./gradlew :app:compileDebugKotlin`
+Expected: BUILD SUCCESSFUL
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/src/main/java/com/example/colorgrabber/ui/RecordDialog.kt app/src/main/java/com/example/colorgrabber/ui/CaptureFragment.kt app/src/main/java/com/example/colorgrabber/ui/PickFragment.kt
+git commit -m "feat(ui): 记录对话框收集样品名/备注/降解时间点"
+```
+
+### Task 6.6：RGB 增益滑条微调
+
+**Files:**
+- Modify: `app/src/test/java/com/example/colorgrabber/wb/WhiteBalanceEngineTest.kt`
+- Modify: `app/src/main/java/com/example/colorgrabber/wb/WhiteBalanceEngine.kt`
+- Modify: `app/src/main/res/layout/fragment_capture.xml`
+- Modify: `app/src/main/java/com/example/colorgrabber/ui/CaptureFragment.kt`
+
+> 在「点白增益 + 色温微调」之上再叠加每通道手动增益微调。先 TDD 加引擎方法，再接 UI。
+
+- [ ] **Step 1: 追加失败测试（`WhiteBalanceEngineTest` 类内）**
+
+```kotlin
+    @Test fun rgbAdjust_identityAtOne() {
+        val base = Gains(1.2, 1.0, 1.5)
+        val g = WhiteBalanceEngine.applyRgbAdjust(base, 1.0, 1.0, 1.0)
+        assertEquals(1.2, g.r, eps); assertEquals(1.0, g.g, eps); assertEquals(1.5, g.b, eps)
+    }
+
+    @Test fun rgbAdjust_scalesEachChannel() {
+        val base = Gains(1.0, 2.0, 1.0)
+        val g = WhiteBalanceEngine.applyRgbAdjust(base, 1.5, 0.5, 1.2)
+        assertEquals(1.5, g.r, eps)   // 1.0*1.5
+        assertEquals(1.0, g.g, eps)   // 2.0*0.5
+        assertEquals(1.2, g.b, eps)   // 1.0*1.2
+    }
+
+    @Test fun rgbAdjust_clampedToMax() {
+        val g = WhiteBalanceEngine.applyRgbAdjust(Gains(7.0, 1.0, 1.0), 1.5, 1.0, 1.0)
+        assertEquals(WhiteBalanceEngine.MAX_GAIN, g.r, eps)  // 7*1.5=10.5 → 8
+    }
+```
+
+- [ ] **Step 2: 运行确认失败**
+
+Run: `./gradlew :app:testDebugUnitTest --tests "com.example.colorgrabber.wb.WhiteBalanceEngineTest"`
+Expected: 编译失败（`applyRgbAdjust` 未定义）
+
+- [ ] **Step 3: 在 `WhiteBalanceEngine` 内追加实现**
+
+```kotlin
+    /** 在增益上叠加每通道手动倍率（默认 1.0），结果钳到 MAX_GAIN。 */
+    fun applyRgbAdjust(base: Gains, rAdj: Double, gAdj: Double, bAdj: Double): Gains = Gains(
+        (base.r * rAdj).coerceIn(0.0, MAX_GAIN),
+        (base.g * gAdj).coerceIn(0.0, MAX_GAIN),
+        (base.b * bAdj).coerceIn(0.0, MAX_GAIN)
+    )
+```
+
+- [ ] **Step 4: 运行确认通过**
+
+Run: `./gradlew :app:testDebugUnitTest --tests "com.example.colorgrabber.wb.WhiteBalanceEngineTest"`
+Expected: PASS
+
+- [ ] **Step 5: Commit 引擎部分**
+
+```bash
+git add app/src/main/java/com/example/colorgrabber/wb/WhiteBalanceEngine.kt app/src/test/java/com/example/colorgrabber/wb/WhiteBalanceEngineTest.kt
+git commit -m "feat(wb): RGB 每通道增益微调"
+```
+
+- [ ] **Step 6: 布局加三条 RGB 增益滑条**
+
+在 `fragment_capture.xml` 的色温 SeekBar（`@id/tempSeek`）之后、第一组按钮 LinearLayout 之前插入：
+
+```xml
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="R 增益微调" />
+        <SeekBar android:id="@+id/rSeek"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:max="200" android:progress="100" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="G 增益微调" />
+        <SeekBar android:id="@+id/gSeek"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:max="200" android:progress="100" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="B 增益微调" />
+        <SeekBar android:id="@+id/bSeek"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:max="200" android:progress="100" />
+```
+
+- [ ] **Step 7: CaptureFragment 接入 RGB 微调并统一增益计算**
+
+在成员区（`tempAdjust` 附近）加入：
+
+```kotlin
+    private var rAdj = 1.0
+    private var gAdj = 1.0
+    private var bAdj = 1.0
+```
+
+加入统一增益辅助方法（类内任意位置）：
+
+```kotlin
+    /** 点白基础增益 → 叠加色温微调 → 叠加 RGB 每通道微调。 */
+    private fun effectiveGains(): Gains {
+        val withTemp = WhiteBalanceEngine.applyTempAdjust(baseGains, tempAdjust)
+        return WhiteBalanceEngine.applyRgbAdjust(withTemp, rAdj, gAdj, bAdj)
+    }
+```
+
+在 `onViewCreated` 内、色温滑条监听之后加入三条滑条监听（滑条 0..200 映射为倍率 0.5..1.5）：
+
+```kotlin
+        b.rSeek.setOnSeekBarChangeListener(simpleSeek { p -> rAdj = 0.5 + p / 200.0; applyWb() })
+        b.gSeek.setOnSeekBarChangeListener(simpleSeek { p -> gAdj = 0.5 + p / 200.0; applyWb() })
+        b.bSeek.setOnSeekBarChangeListener(simpleSeek { p -> bAdj = 0.5 + p / 200.0; applyWb() })
+```
+
+把 `onFrame` 内 `val gains = WhiteBalanceEngine.applyTempAdjust(baseGains, tempAdjust)` 替换为：
+
+```kotlin
+        val gains = effectiveGains()
+```
+
+把 `applyWb()` 内 `val gains = WhiteBalanceEngine.applyTempAdjust(baseGains, tempAdjust)` 替换为：
+
+```kotlin
+        val gains = effectiveGains()
+```
+
+确认 `saveCurrent()`（Task 6.5）中使用的是 `effectiveGains()`（若 6.5 先做时用了临时表达式，此处改回 `effectiveGains()`）。
+
+- [ ] **Step 8: 整体编译确认通过**
+
+Run: `./gradlew :app:compileDebugKotlin`
+Expected: BUILD SUCCESSFUL
+
+- [ ] **Step 9: Commit UI 部分**
+
+```bash
+git add app/src/main/res/layout/fragment_capture.xml app/src/main/java/com/example/colorgrabber/ui/CaptureFragment.kt
+git commit -m "feat(ui): RGB 增益滑条微调接入取色界面"
+```
+
+---
+
 ## Milestone 7：整体验证
 
 ### Task 7.1：全部单测 + 构建 APK + 手动验证
@@ -1997,6 +2259,8 @@ Expected: BUILD SUCCESSFUL，产物 `app/build/outputs/apk/debug/app-debug.apk`
 9. 系统相册存在 `ColorGrabber` 相册且有照片（Android 10+）。
 10. 历史界面「导出 CSV」→ 弹出分享，Excel 打开中文不乱码、字段齐全。
 11. 历史项「删除」可删除记录。
+12. 点「记录」弹出对话框，可填样品名/备注/降解时间点；保存后历史与 CSV 中这些字段正确。
+13. 拖 R/G/B 增益滑条，预览与白平衡信息中的增益随之变化，记录里 gainR/G/B 反映微调结果。
 
 - [ ] **Step 4: Commit（如手动验证有修复）**
 
@@ -2009,12 +2273,12 @@ git commit -m "fix: 手动验证问题修复"
 
 ## 自查记录（写计划时已核对）
 
-- **spec 覆盖**：四类色值(M1)、实时+拍照取色(M3/6.2/6.4)、手动白平衡四件套点白+色温+RGB增益+显示参数(M2/6.2，
-  RGB 增益微调通过 `Gains` 直接编辑能力具备，UI 当前以色温滑条为主，RGB 增益滑条作为可选增强见下)、
-  参比 I0(6.2)、本地历史+CSV+相册+标签字段(M4/6.3)、降级策略(M5)、过曝/未校准/未标定提示(6.2)、测试策略(各 TDD 任务 + 7.1) 均有任务。
+- **spec 覆盖**：四类色值(M1)、实时+拍照取色(M3/6.2/6.4)、手动白平衡四件套点白+色温+RGB增益+显示参数(M2/6.2/6.6)、
+  参比 I0(6.2)、本地历史+CSV+相册+标签字段(M4/6.3)、记录对话框收集样品名/备注/降解时间点(6.5)、
+  降级策略(M5)、过曝/未校准/未标定提示(6.2)、测试策略(各 TDD 任务 + 7.1) 均有任务。
 - **类型一致**：`Rgb/Hsv/Lab/Absorbance/Gains/RoiRect/RoiResult/Measurement` 跨任务签名一致；
-  `WhiteBalanceEngine.gainsFromWhite/applyTempAdjust/normalize/displayKelvin`、
+  `WhiteBalanceEngine.gainsFromWhite/applyTempAdjust/applyRgbAdjust/normalize/displayKelvin`、
   `ColorAnalyzer.toHsv/toLab/toAbsorbance`、`RoiSampler.sample` 命名生产/测试一致。
+- **任务依赖**：6.5 与 6.6 都改 `CaptureFragment`；推荐先 6.6（引入 `effectiveGains()`）再 6.5，
+  或按计划先 6.5 用临时表达式、6.6 再统一为 `effectiveGains()`（6.5 Step 2 已注明）。
 - **已知降级（明确决策，非占位符）**：Android 9 及以下相册不分子目录；不支持手动 WB 的机型回退软件归一化。
-- **本期取舍**：RGB 增益滑条微调与「记录时填样品名/备注/降解时间点对话框」的 UI 入口未在本计划逐步展开，
-  数据层与算法已完全支持；执行阶段如需，作为 Task 6.5（记录对话框）与 6.6（RGB 增益滑条）追加，不影响主流程。
