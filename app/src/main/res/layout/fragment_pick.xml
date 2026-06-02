@@ -1,131 +1,152 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical">
+    android:layout_height="match_parent">
 
     <com.example.colorgrabber.ui.ZoomableRoiView
         android:id="@+id/viewer"
-        android:layout_width="match_parent"
+        android:layout_width="0dp"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:background="#1A1F1D" />
+        android:background="#1A1F1D"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/panelGuide"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
-    <ScrollView
-        android:layout_width="match_parent"
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/panelGuide"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:maxHeight="360dp"
-        android:background="?attr/colorSurface">
+        android:orientation="horizontal"
+        app:layout_constraintGuide_percent="0.55" />
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:animateLayoutChanges="true"
-            android:paddingHorizontal="18dp"
-            android:paddingTop="12dp"
-            android:paddingBottom="18dp">
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:orientation="vertical"
+        android:background="?attr/colorSurface"
+        app:layout_constraintTop_toTopOf="@id/panelGuide"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
 
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:orientation="horizontal" android:gravity="center_vertical">
-                <View android:id="@+id/swatch"
-                    android:layout_width="52dp" android:layout_height="52dp" />
-                <LinearLayout android:layout_width="0dp" android:layout_weight="1"
-                    android:layout_height="wrap_content" android:orientation="vertical"
-                    android:layout_marginStart="14dp">
-                    <TextView android:id="@+id/rgbText"
-                        android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:textSize="23sp" android:textStyle="bold"
-                        android:textColor="?android:attr/textColorPrimary"
-                        android:text="RGB —" />
-                    <TextView android:id="@+id/hexText"
-                        android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:textSize="13sp" android:fontFamily="monospace"
-                        android:textColor="?android:attr/textColorSecondary"
-                        android:text="拖动/缩放图片，拖框或拉角选区" />
-                </LinearLayout>
-            </LinearLayout>
-
-            <View style="@style/HLine" />
-
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingVertical="3dp">
-                <TextView style="@style/RoLabel" android:text="HSV" />
-                <TextView android:id="@+id/valHsv" style="@style/RoValue" android:text="—" />
-            </LinearLayout>
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingVertical="3dp">
-                <TextView style="@style/RoLabel" android:text="Lab" />
-                <TextView android:id="@+id/valLab" style="@style/RoValue" android:text="—" />
-            </LinearLayout>
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingVertical="3dp">
-                <TextView style="@style/RoLabel" android:text="吸光度" />
-                <TextView android:id="@+id/valAbs" style="@style/RoValue" android:text="未标定（先设参比）" />
-            </LinearLayout>
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingVertical="3dp">
-                <TextView style="@style/RoLabel" android:text="白平衡" />
-                <TextView android:id="@+id/valWb" style="@style/RoValue" android:text="未校准" />
-            </LinearLayout>
-
-            <View style="@style/HLine" />
-
-            <LinearLayout android:id="@+id/wbHeader"
-                android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:orientation="horizontal" android:gravity="center_vertical"
-                android:paddingVertical="8dp"
-                android:background="?attr/selectableItemBackground"
-                android:clickable="true" android:focusable="true">
-                <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
-                    android:textSize="14sp" android:textStyle="bold"
-                    android:textColor="?android:attr/textColorPrimary"
-                    android:text="⚙ 白平衡微调" />
-                <TextView android:id="@+id/wbChevron"
-                    android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:textSize="16sp" android:textColor="?attr/colorPrimary" android:text="▾" />
-            </LinearLayout>
-
-            <LinearLayout android:id="@+id/wbPanel"
-                android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:orientation="vertical" android:visibility="gone">
-
-                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="6dp">
-                    <TextView style="@style/SliderLabel" android:text="色温" />
-                    <TextView android:id="@+id/tempVal" style="@style/SliderValue" android:text="5500K" />
-                </LinearLayout>
-                <SeekBar android:id="@+id/tempSeek" android:layout_width="match_parent" android:layout_height="wrap_content" android:max="200" android:progress="100" />
-
-                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="6dp">
-                    <TextView style="@style/SliderLabel" android:text="R 增益" />
-                    <TextView android:id="@+id/rVal" style="@style/SliderValue" android:text="×1.00" />
-                </LinearLayout>
-                <SeekBar android:id="@+id/rSeek" android:layout_width="match_parent" android:layout_height="wrap_content" android:max="200" android:progress="100" />
-
-                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="6dp">
-                    <TextView style="@style/SliderLabel" android:text="G 增益" />
-                    <TextView android:id="@+id/gVal" style="@style/SliderValue" android:text="×1.00" />
-                </LinearLayout>
-                <SeekBar android:id="@+id/gSeek" android:layout_width="match_parent" android:layout_height="wrap_content" android:max="200" android:progress="100" />
-
-                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="6dp">
-                    <TextView style="@style/SliderLabel" android:text="B 增益" />
-                    <TextView android:id="@+id/bVal" style="@style/SliderValue" android:text="×1.00" />
-                </LinearLayout>
-                <SeekBar android:id="@+id/bSeek" android:layout_width="match_parent" android:layout_height="wrap_content" android:max="200" android:progress="100" />
-            </LinearLayout>
-
-            <View style="@style/HLine" />
-
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:orientation="horizontal">
-                <Button android:id="@+id/btnPickWhite" style="?attr/materialButtonOutlinedStyle"
-                    android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
-                    android:layout_marginEnd="8dp" android:text="点白校准" />
-                <Button android:id="@+id/btnSetRef" style="?attr/materialButtonOutlinedStyle"
-                    android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
-                    android:text="设参比" />
-            </LinearLayout>
-            <Button android:id="@+id/btnRecordPick"
-                android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:layout_marginTop="10dp" android:paddingVertical="10dp"
-                android:textSize="16sp" android:text="记录此点" />
+        <!-- 粘性 RGB 表头（紧凑，单行） -->
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:gravity="center_vertical"
+            android:paddingHorizontal="18dp" android:paddingVertical="8dp">
+            <View android:id="@+id/swatch"
+                android:layout_width="38dp" android:layout_height="38dp" />
+            <TextView android:id="@+id/rgbText"
+                android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:textSize="20sp" android:textStyle="bold"
+                android:textColor="?android:attr/textColorPrimary"
+                android:text="RGB —" />
+            <TextView android:id="@+id/hexText"
+                android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:textSize="13sp" android:fontFamily="monospace"
+                android:textColor="?android:attr/textColorSecondary"
+                android:text="拖动/缩放选区" />
         </LinearLayout>
-    </ScrollView>
-</LinearLayout>
+        <View android:layout_width="match_parent" android:layout_height="1dp"
+            android:background="?android:attr/listDivider" />
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:animateLayoutChanges="true"
+                android:paddingHorizontal="18dp"
+                android:paddingTop="8dp"
+                android:paddingBottom="18dp">
+
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingVertical="3dp">
+                    <TextView style="@style/RoLabel" android:text="HSV" />
+                    <TextView android:id="@+id/valHsv" style="@style/RoValue" android:text="—" />
+                </LinearLayout>
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingVertical="3dp">
+                    <TextView style="@style/RoLabel" android:text="Lab" />
+                    <TextView android:id="@+id/valLab" style="@style/RoValue" android:text="—" />
+                </LinearLayout>
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingVertical="3dp">
+                    <TextView style="@style/RoLabel" android:text="吸光度" />
+                    <TextView android:id="@+id/valAbs" style="@style/RoValue" android:text="未标定（先设参比）" />
+                </LinearLayout>
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingVertical="3dp">
+                    <TextView style="@style/RoLabel" android:text="白平衡" />
+                    <TextView android:id="@+id/valWb" style="@style/RoValue" android:text="未校准" />
+                </LinearLayout>
+
+                <View style="@style/HLine" />
+
+                <LinearLayout android:id="@+id/wbHeader"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:orientation="horizontal" android:gravity="center_vertical"
+                    android:paddingVertical="8dp"
+                    android:background="?attr/selectableItemBackground"
+                    android:clickable="true" android:focusable="true">
+                    <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+                        android:textSize="14sp" android:textStyle="bold"
+                        android:textColor="?android:attr/textColorPrimary"
+                        android:text="⚙ 白平衡微调" />
+                    <TextView android:id="@+id/wbChevron"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:textSize="16sp" android:textColor="?attr/colorPrimary" android:text="▾" />
+                </LinearLayout>
+
+                <LinearLayout android:id="@+id/wbPanel"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:orientation="vertical" android:visibility="gone">
+
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="6dp">
+                        <TextView style="@style/SliderLabel" android:text="色温" />
+                        <TextView android:id="@+id/tempVal" style="@style/SliderValue" android:text="5500K" />
+                    </LinearLayout>
+                    <SeekBar android:id="@+id/tempSeek" android:layout_width="match_parent" android:layout_height="wrap_content" android:max="200" android:progress="100" />
+
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="6dp">
+                        <TextView style="@style/SliderLabel" android:text="R 增益" />
+                        <TextView android:id="@+id/rVal" style="@style/SliderValue" android:text="×1.00" />
+                    </LinearLayout>
+                    <SeekBar android:id="@+id/rSeek" android:layout_width="match_parent" android:layout_height="wrap_content" android:max="200" android:progress="100" />
+
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="6dp">
+                        <TextView style="@style/SliderLabel" android:text="G 增益" />
+                        <TextView android:id="@+id/gVal" style="@style/SliderValue" android:text="×1.00" />
+                    </LinearLayout>
+                    <SeekBar android:id="@+id/gSeek" android:layout_width="match_parent" android:layout_height="wrap_content" android:max="200" android:progress="100" />
+
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="6dp">
+                        <TextView style="@style/SliderLabel" android:text="B 增益" />
+                        <TextView android:id="@+id/bVal" style="@style/SliderValue" android:text="×1.00" />
+                    </LinearLayout>
+                    <SeekBar android:id="@+id/bSeek" android:layout_width="match_parent" android:layout_height="wrap_content" android:max="200" android:progress="100" />
+                </LinearLayout>
+
+                <View style="@style/HLine" />
+
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                    <Button android:id="@+id/btnPickWhite" style="?attr/materialButtonOutlinedStyle"
+                        android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+                        android:layout_marginEnd="8dp" android:text="点白校准" />
+                    <Button android:id="@+id/btnSetRef" style="?attr/materialButtonOutlinedStyle"
+                        android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+                        android:text="设参比" />
+                </LinearLayout>
+                <Button android:id="@+id/btnRecordPick"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp" android:paddingVertical="10dp"
+                    android:textSize="16sp" android:text="记录此点" />
+            </LinearLayout>
+        </ScrollView>
+    </LinearLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>
