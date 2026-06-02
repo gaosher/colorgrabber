@@ -48,4 +48,23 @@ class WhiteBalanceEngineTest {
         assertEquals(2800, WhiteBalanceEngine.displayKelvin(1.0))
         assertEquals(8200, WhiteBalanceEngine.displayKelvin(-1.0))
     }
+
+    @Test fun rgbAdjust_identityAtOne() {
+        val base = Gains(1.2, 1.0, 1.5)
+        val g = WhiteBalanceEngine.applyRgbAdjust(base, 1.0, 1.0, 1.0)
+        assertEquals(1.2, g.r, eps); assertEquals(1.0, g.g, eps); assertEquals(1.5, g.b, eps)
+    }
+
+    @Test fun rgbAdjust_scalesEachChannel() {
+        val base = Gains(1.0, 2.0, 1.0)
+        val g = WhiteBalanceEngine.applyRgbAdjust(base, 1.5, 0.5, 1.2)
+        assertEquals(1.5, g.r, eps)   // 1.0*1.5
+        assertEquals(1.0, g.g, eps)   // 2.0*0.5
+        assertEquals(1.2, g.b, eps)   // 1.0*1.2
+    }
+
+    @Test fun rgbAdjust_clampedToMax() {
+        val g = WhiteBalanceEngine.applyRgbAdjust(Gains(7.0, 1.0, 1.0), 1.5, 1.0, 1.0)
+        assertEquals(WhiteBalanceEngine.MAX_GAIN, g.r, eps)  // 7*1.5=10.5 → 8
+    }
 }

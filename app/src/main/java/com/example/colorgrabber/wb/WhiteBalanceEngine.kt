@@ -38,4 +38,11 @@ object WhiteBalanceEngine {
     /** tempAdjust → 近似开尔文显示值。 */
     fun displayKelvin(tempAdjust: Double): Int =
         (5500 - tempAdjust.coerceIn(-1.0, 1.0) * 2700).roundToInt()
+
+    /** 在增益上叠加每通道手动倍率（默认 1.0），结果钳到 MAX_GAIN。 */
+    fun applyRgbAdjust(base: Gains, rAdj: Double, gAdj: Double, bAdj: Double): Gains = Gains(
+        (base.r * rAdj).coerceIn(0.0, MAX_GAIN),
+        (base.g * gAdj).coerceIn(0.0, MAX_GAIN),
+        (base.b * bAdj).coerceIn(0.0, MAX_GAIN)
+    )
 }
