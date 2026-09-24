@@ -43,8 +43,9 @@ class CaptureFragment : Fragment(), MenuProvider {
     private var lastRawRgb: Rgb = Rgb(0, 0, 0)
     private var lastRoi = RoiRect(0, 0, 0, 0)
     private var referenceRgb: Rgb? = null
-    private var frameCounter = 0
-    @Volatile private var pendingPickWhite = false
+    @Volatile private var frameCounter = 0
+    /** 到达该帧号后取当前取色框为白色（-1 表示无待办）；留出几帧让锁定生效。 */
+    @Volatile private var pickWhiteAtFrame = -1
     @Volatile private var pendingCapture = false
 
     private val permLauncher = registerForActivityResult(
@@ -74,6 +75,12 @@ class CaptureFragment : Fragment(), MenuProvider {
         }
         requireActivity().addMenuProvider(this, viewLifecycleOwner, Lifecycle.State.RESUMED)
 
+        // 视图重建（如从测量页返回）时相机会重新启动，之前的锁定已失效
+        if (locked) {
+            locked = false
+            Toast.makeText(requireContext(), "相机已重新启动，锁定已解除，请重新点白", Toast.LENGTH_LONG).show()
+        }
+
         repo = MeasurementRepository(requireContext().applicationContext)
         camera = CameraController(requireContext(), viewLifecycleOwner, b.previewView)
         camera.onFrame = ::onFrame
@@ -86,19 +93,19 @@ class CaptureFragment : Fragment(), MenuProvider {
 
         b.tempSeek.setOnSeekBarChangeListener(simpleSeek { p ->
             wb.tempAdjust = (p - 100) / 100.0
-            b.tempVal.text = "${WhiteBalanceEngine.displayKelvin(wb.tempAdjust)}K"; applyWb()
+            b.tempVal.text = "${WhiteBalanceEngine.displayKelvin(wb.tempAdjust)}K"; updateWbText()
         })
         b.rSeek.setOnSeekBarChangeListener(simpleSeek { p ->
-            wb.rAdj = 0.5 + p / 200.0; b.rVal.text = "×%.2f".format(wb.rAdj); applyWb()
+            wb.rAdj = 0.5 + p / 200.0; b.rVal.text = "×%.2f".format(wb.rAdj); updateWbText()
         })
         b.gSeek.setOnSeekBarChangeListener(simpleSeek { p ->
-            wb.gAdj = 0.5 + p / 200.0; b.gVal.text = "×%.2f".format(wb.gAdj); applyWb()
+            wb.gAdj = 0.5 + p / 200.0; b.gVal.text = "×%.2f".format(wb.gAdj); updateWbText()
         })
         b.bSeek.setOnSeekBarChangeListener(simpleSeek { p ->
-            wb.bAdj = 0.5 + p / 200.0; b.bVal.text = "×%.2f".format(wb.bAdj); applyWb()
+            wb.bAdj = 0.5 + p / 200.0; b.bVal.text = "×%.2f".format(wb.bAdj); updateWbText()
         })
 
-        b.btnPickWhite.setOnClickListener { pendingPickWhite = true }
+        b.btnPickWhite.setOnClickListener { pickWhite() }
         b.btnSetRef.setOnClickListener {
             referenceRgb = lastNormRgb
             Toast.makeText(requireContext(), "已设为参比 I0", Toast.LENGTH_SHORT).show()
@@ -119,10 +126,10 @@ class CaptureFragment : Fragment(), MenuProvider {
 
     override fun onMenuItemSelected(item: MenuItem): Boolean = when (item.itemId) {
         R.id.action_lock -> {
-            locked = !locked
-            item.isChecked = locked
-            if (locked) camera.lockExposureAndFocus() else camera.unlockExposureAndFocus()
-            Toast.makeText(requireContext(), if (locked) "已锁定曝光对焦" else "已解锁", Toast.LENGTH_SHORT).show()
+            setLocked(!locked)
+            Toast.makeText(requireContext(),
+                if (locked) "已锁定曝光/白平衡/对焦" else "已解锁，光线或构图变化后请重新点白",
+                Toast.LENGTH_SHORT).show()
             true
         }
         R.id.action_history -> {
@@ -132,6 +139,25 @@ class CaptureFragment : Fragment(), MenuProvider {
             true
         }
         else -> false
+    }
+
+    private fun setLocked(lock: Boolean) {
+        locked = lock
+        camera.setLocked(lock)
+        requireActivity().invalidateMenu()
+    }
+
+    /**
+     * 点白：先锁定曝光/白平衡/对焦，等锁定生效后再取白。
+     * 否则移到样品上时自动曝光会重新调整亮度，点白得到的增益就不再适用。
+     */
+    private fun pickWhite() {
+        locked = true
+        requireActivity().invalidateMenu()
+        val submitted = camera.setLocked(true) {
+            pickWhiteAtFrame = frameCounter + LOCK_SETTLE_FRAMES
+        }
+        if (!submitted) pickWhiteAtFrame = frameCounter
     }
 
     private fun roiForFrame(w: Int, h: Int): RoiRect {
@@ -148,10 +174,15 @@ class CaptureFragment : Fragment(), MenuProvider {
         val res = RoiSampler.sample(px, w, h, roi)
         lastRawRgb = res.mean; lastRoi = roi
 
-        if (pendingPickWhite) {
+        val pickAt = pickWhiteAtFrame
+        if (pickAt in 0..frameCounter) {
             wb.pickWhite(res.mean)
-            pendingPickWhite = false
-            act.runOnUiThread { applyWb() }
+            pickWhiteAtFrame = -1
+            act.runOnUiThread {
+                if (_b == null) return@runOnUiThread
+                updateWbText()
+                Toast.makeText(act, "已点白校准，并锁定曝光/白平衡", Toast.LENGTH_SHORT).show()
+            }
         }
         if (pendingCapture) {
             val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
@@ -180,16 +211,18 @@ class CaptureFragment : Fragment(), MenuProvider {
         }
     }
 
-    private fun applyWb() {
+    /** 白平衡增益只在软件里施加（onFrame 中 normalize），这里仅刷新显示。 */
+    private fun updateWbText() {
         if (_b == null) return
         val gains = wb.effectiveGains()
-        val ok = camera.setManualWhiteBalance(gains)
         b.valWb.text = "色温≈${WhiteBalanceEngine.displayKelvin(wb.tempAdjust)}K · 增益 " +
-            "${"%.2f".format(gains.r)}/${"%.2f".format(gains.g)}/${"%.2f".format(gains.b)}" +
-            if (!ok) "（软件）" else ""
+            "${"%.2f".format(gains.r)}/${"%.2f".format(gains.g)}/${"%.2f".format(gains.b)}"
     }
 
     private fun onFrameCaptured(bmp: Bitmap) {
+        // 把取景页的白平衡和取色框带到测量页，读数与拍摄时保持一致
+        val gains = wb.effectiveGains()
+        val roi = roiForFrame(bmp.width, bmp.height)
         lifecycleScope.launch {
             val uri = repo.saveImageToAlbum(bmp, "CG_${System.currentTimeMillis()}")
             if (uri == null) {
@@ -197,7 +230,7 @@ class CaptureFragment : Fragment(), MenuProvider {
                 return@launch
             }
             parentFragmentManager.beginTransaction()
-                .replace(R.id.container, PickFragment.newInstance(uri.toString()))
+                .replace(R.id.container, PickFragment.newInstance(uri.toString(), roi, gains))
                 .addToBackStack(null).commit()
         }
     }
@@ -224,6 +257,11 @@ class CaptureFragment : Fragment(), MenuProvider {
                 Toast.makeText(requireContext(), "已记录", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    companion object {
+        /** 锁定请求提交后再等的帧数，确保取白用的帧已处于锁定状态。 */
+        private const val LOCK_SETTLE_FRAMES = 8
     }
 
     override fun onDestroyView() {

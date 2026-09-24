@@ -8,7 +8,7 @@
         app:showAsAction="ifRoom" />
     <item
         android:id="@+id/action_lock"
-        android:title="锁定曝光"
+        android:title="锁定曝光/白平衡"
         android:checkable="true"
         app:showAsAction="never" />
 </menu>

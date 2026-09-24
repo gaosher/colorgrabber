@@ -2,7 +2,9 @@ package com.example.colorgrabber.ui
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.ColorSpace
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.Menu
@@ -50,7 +52,11 @@ class PickFragment : Fragment(), MenuProvider {
         private const val ARG_ROI = "roi"          // [x,y,w,h]
         private const val ARG_GAIN = "gain"        // [r,g,b]
 
-        fun newInstance(uri: String) = create(uri, false, null, null)
+        /** 取景页拍照后进入：沿用取景页的取色框与白平衡增益。 */
+        fun newInstance(uri: String, roi: RoiRect, gains: Gains) = create(
+            uri, false, intArrayOf(roi.x, roi.y, roi.w, roi.h),
+            doubleArrayOf(gains.r, gains.g, gains.b)
+        )
         fun newImport(uri: String) = create(uri, true, null, null)
 
         /** 从历史记录重新打开（需有图片）：还原取色框与增益。 */
@@ -87,11 +93,7 @@ class PickFragment : Fragment(), MenuProvider {
         imported = args.getBoolean(ARG_IMPORTED, false)
         args.getDoubleArray(ARG_GAIN)?.let { wb.baseGains = Gains(it[0], it[1], it[2]) }
 
-        bitmap = imageUri?.let {
-            requireContext().contentResolver.openInputStream(Uri.parse(it))?.use { s ->
-                BitmapFactory.decodeStream(s)
-            }
-        }
+        bitmap = imageUri?.let { decodeSrgb(Uri.parse(it)) }
         if (bitmap == null) {
             Toast.makeText(requireContext(), "无法打开图片", Toast.LENGTH_SHORT).show()
         }
@@ -146,6 +148,22 @@ class PickFragment : Fragment(), MenuProvider {
             true
         }
         else -> false
+    }
+
+    /**
+     * 显式按 sRGB 解码：带 Display P3 / Adobe RGB 等配置文件的图片统一转换到 sRGB，
+     * 与 Lab 计算的 sRGB 假设一致；普通 sRGB 图片不做任何转换。
+     */
+    private fun decodeSrgb(uri: Uri): Bitmap? {
+        val opts = BitmapFactory.Options().apply {
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                inPreferredColorSpace = ColorSpace.get(ColorSpace.Named.SRGB)
+            }
+        }
+        return requireContext().contentResolver.openInputStream(uri)?.use { s ->
+            BitmapFactory.decodeStream(s, null, opts)
+        }
     }
 
     private fun sampleCurrent() = bitmap?.let { bmp ->
