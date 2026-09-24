@@ -3,7 +3,6 @@ package com.example.colorgrabber.camera
 import android.annotation.SuppressLint
 import android.content.Context
 import android.hardware.camera2.CaptureRequest
-import android.hardware.camera2.params.RggbChannelVector
 import androidx.camera.camera2.interop.Camera2CameraControl
 import androidx.camera.camera2.interop.CaptureRequestOptions
 import androidx.camera.core.CameraSelector
@@ -14,7 +13,6 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
-import com.example.colorgrabber.wb.Gains
 import java.util.concurrent.Executors
 
 class CameraController(
@@ -77,53 +75,31 @@ class CameraController(
         }
     }
 
-    /** 设置手动白平衡增益；不支持的机型返回 false。 */
+    /**
+     * 锁定 / 解锁曝光、自动白平衡与对焦。
+     * 白平衡增益只在软件里施加（见 WhiteBalanceEngine），相机这边只负责把
+     * AE/AWB 冻结住，保证点白之后的每一帧都在同一套曝光与颜色处理下取得。
+     * 注意 setCaptureRequestOptions 会整体替换之前的选项，所以三者必须一起设置。
+     * @param onSubmitted 选项提交到相机后在主线程回调。
+     * @return 相机尚未就绪或设置失败时返回 false（此时不会回调）。
+     */
     @SuppressLint("UnsafeOptInUsageError")
-    fun setManualWhiteBalance(gains: Gains): Boolean {
+    fun setLocked(lock: Boolean, onSubmitted: (() -> Unit)? = null): Boolean {
         val control = camera2Control ?: return false
         return runCatching {
             val opts = CaptureRequestOptions.Builder()
-                .setCaptureRequestOption(CaptureRequest.CONTROL_AWB_MODE,
-                    CaptureRequest.CONTROL_AWB_MODE_OFF)
-                // FAST 模式下 HAL 接受 app 提供的 GAINS 并自算 transform；
-                // 不能用 TRANSFORM_MATRIX（那要求同时提供 3x3 矩阵，否则增益会被忽略/失真）。
-                .setCaptureRequestOption(CaptureRequest.COLOR_CORRECTION_MODE,
-                    CaptureRequest.COLOR_CORRECTION_MODE_FAST)
-                .setCaptureRequestOption(CaptureRequest.COLOR_CORRECTION_GAINS,
-                    RggbChannelVector(
-                        gains.r.toFloat(), gains.g.toFloat(), gains.g.toFloat(), gains.b.toFloat()))
+                .setCaptureRequestOption(CaptureRequest.CONTROL_AE_LOCK, lock)
+                .setCaptureRequestOption(CaptureRequest.CONTROL_AWB_LOCK, lock)
+                .setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE,
+                    if (lock) CaptureRequest.CONTROL_AF_MODE_OFF
+                    else CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
                 .build()
-            control.setCaptureRequestOptions(opts)
+            val future = control.setCaptureRequestOptions(opts)
+            if (onSubmitted != null) {
+                future.addListener({ onSubmitted() }, ContextCompat.getMainExecutor(context))
+            }
             true
         }.getOrDefault(false)
-    }
-
-    /** 锁定曝光与对焦。 */
-    @SuppressLint("UnsafeOptInUsageError")
-    fun lockExposureAndFocus() {
-        val control = camera2Control ?: return
-        runCatching {
-            val opts = CaptureRequestOptions.Builder()
-                .setCaptureRequestOption(CaptureRequest.CONTROL_AE_LOCK, true)
-                .setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE,
-                    CaptureRequest.CONTROL_AF_MODE_OFF)
-                .build()
-            control.setCaptureRequestOptions(opts)
-        }
-    }
-
-    /** 解锁曝光与对焦，恢复连续自动。 */
-    @SuppressLint("UnsafeOptInUsageError")
-    fun unlockExposureAndFocus() {
-        val control = camera2Control ?: return
-        runCatching {
-            val opts = CaptureRequestOptions.Builder()
-                .setCaptureRequestOption(CaptureRequest.CONTROL_AE_LOCK, false)
-                .setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE,
-                    CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
-                .build()
-            control.setCaptureRequestOptions(opts)
-        }
     }
 
     fun stop() {
