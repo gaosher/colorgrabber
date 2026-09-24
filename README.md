@@ -57,7 +57,7 @@ export JAVA_HOME=/home/gser/.gradle/jdks/jdk-21.0.7+6
 # 产物:app/build/outputs/apk/release/app-release.apk
 ```
 
-- 签名密钥库:`colorgrabber-release.jks`(alias `colorgrabber`,有效期 100 年)
+- 签名密钥库:`colorgrabber-release.jks`(alias `colorgrabber`,有效期 100 年)。1.0 的密钥已丢失,自 1.1 起使用新密钥,从 1.0 升级需先卸载
 - **请务必备份 `colorgrabber-release.jks` 与 `keystore.properties`**:一旦丢失,将无法用同一签名发布后续更新。
 - Release 与 Debug 签名不同,设备上需先卸载 Debug 版再安装 Release 版。
 
