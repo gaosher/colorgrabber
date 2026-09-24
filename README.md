@@ -18,7 +18,7 @@ App 把试管溶液的颜色量化为 RGB / HSV / Lab / **三通道吸光度**,�
   - 测量页:对拍下的静态照片操作——**双指缩放、单指平移图片**,**拖动/拉角调整取色框**,在冻结画面上从容选区
 - **取色框内像素求平均**,输出代表色,降低噪点/反光影响;过曝(像素≥250 占比>20%)会提示 ⚠
 - **四类色彩输出**:RGB、HSV、Lab、**逐通道吸光度 A_R/A_G/A_B**(基于朗伯比尔 `A = −log₁₀(I/I₀)`)
-- **手动白平衡**:对准白背景一键「点白校准」+ 色温/RGB 增益微调;取景时走相机硬件白平衡,测量时走软件归一化,跨设备更一致
+- **手动白平衡**:对准白背景一键「点白校准」+ 色温/RGB 增益微调;增益统一在软件中计算,取景页点白时自动锁定曝光/白平衡/对焦,拍照后测量页沿用同一套增益
 - **设参比 I₀**:采空白/白背景作吸光度基线,之后样品自动给出三通道吸光度
 - **大号 RGB 读数 + 实时色块**,一眼可读
 - **数据持久化**:本地历史(Room)、原图存入专属相册「ColorGrabber/」、记录关联图片与取色框、样品名/备注/降解时间点字段
@@ -57,9 +57,30 @@ export JAVA_HOME=/home/gser/.gradle/jdks/jdk-21.0.7+6
 # 产物:app/build/outputs/apk/release/app-release.apk
 ```
 
-- 签名密钥库:`colorgrabber-release.jks`(alias `colorgrabber`,有效期 100 年)
+- 签名密钥库:`colorgrabber-release.jks`(alias `colorgrabber`,有效期 100 年)。1.0 的密钥已丢失,自 1.1 起使用新密钥,从 1.0 升级需先卸载
 - **请务必备份 `colorgrabber-release.jks` 与 `keystore.properties`**:一旦丢失,将无法用同一签名发布后续更新。
 - Release 与 Debug 签名不同,设备上需先卸载 Debug 版再安装 Release 版。
+
+### 通过 GitHub Actions 发布
+
+推送 `v*` tag 会触发 `.github/workflows/release.yml`:跑单元测试 → 用仓库 Secrets 中的密钥打签名包 → 创建 GitHub Release 并上传 APK。
+
+一次性配置(仓库 Settings → Secrets and variables → Actions):
+
+| Secret | 内容 |
+|---|---|
+| `KEYSTORE_BASE64` | `base64 -w0 colorgrabber-release.jks` 的输出 |
+| `KEYSTORE_PASSWORD` | `keystore.properties` 中的 `storePassword` |
+| `KEY_ALIAS` | `keystore.properties` 中的 `keyAlias` |
+| `KEY_PASSWORD` | `keystore.properties` 中的 `keyPassword` |
+
+每次发版:
+
+1. 修改 `app/build.gradle.kts` 的 `versionCode`(+1)与 `versionName`;
+2. 在 `docs/releases/v<版本>.md` 写发布说明(可选,不写则自动生成);
+3. 合并到 `main` 后打 tag 并推送:`git tag v1.1 && git push origin v1.1`。
+
+tag 必须与 `versionName` 一致(如 `v1.1` ↔ `1.1`),否则 workflow 会报错退出。
 
 ## 项目结构
 
