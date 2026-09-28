@@ -2,21 +2,24 @@ package com.example.colorgrabber.camera
 
 import com.example.colorgrabber.color.Rgb
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 data class RoiRect(val x: Int, val y: Int, val w: Int, val h: Int)
 
-data class RoiResult(val mean: Rgb, val overexposedRatio: Double)
+/** stdDev：三通道各自标准差中的最大值，衡量 ROI 内颜色是否均匀。 */
+data class RoiResult(val mean: Rgb, val overexposedRatio: Double, val stdDev: Double = 0.0)
 
 object RoiSampler {
     private const val OVEREXPOSED = 250
 
-    /** px 为 ARGB 行优先数组，宽 width 高 height；返回 ROI 内平均 RGB 与过曝比例。 */
+    /** px 为 ARGB 行优先数组，宽 width 高 height；返回 ROI 内平均 RGB、过曝比例与标准差。 */
     fun sample(px: IntArray, width: Int, height: Int, roi: RoiRect): RoiResult {
         val x0 = roi.x.coerceIn(0, width)
         val y0 = roi.y.coerceIn(0, height)
         val x1 = (roi.x + roi.w).coerceIn(0, width)
         val y1 = (roi.y + roi.h).coerceIn(0, height)
         var sumR = 0L; var sumG = 0L; var sumB = 0L; var n = 0L; var over = 0L
+        var sqR = 0L; var sqG = 0L; var sqB = 0L
         for (y in y0 until y1) {
             for (x in x0 until x1) {
                 val c = px[y * width + x]
@@ -24,6 +27,7 @@ object RoiSampler {
                 val g = (c ushr 8) and 0xFF
                 val b = c and 0xFF
                 sumR += r; sumG += g; sumB += b; n++
+                sqR += r * r; sqG += g * g; sqB += b * b
                 if (r >= OVEREXPOSED || g >= OVEREXPOSED || b >= OVEREXPOSED) over++
             }
         }
@@ -31,6 +35,11 @@ object RoiSampler {
         val mean = Rgb((sumR.toDouble() / n).roundToInt(),
                        (sumG.toDouble() / n).roundToInt(),
                        (sumB.toDouble() / n).roundToInt())
-        return RoiResult(mean, over.toDouble() / n)
+        fun std(sum: Long, sq: Long): Double {
+            val m = sum.toDouble() / n
+            return sqrt((sq.toDouble() / n - m * m).coerceAtLeast(0.0))
+        }
+        val stdDev = maxOf(std(sumR, sqR), std(sumG, sqG), std(sumB, sqB))
+        return RoiResult(mean, over.toDouble() / n, stdDev)
     }
 }

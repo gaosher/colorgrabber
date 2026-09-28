@@ -27,4 +27,17 @@ class RoiSamplerTest {
         val res = RoiSampler.sample(px, w, h, RoiRect(0, 0, 2, 1))
         assertTrue(res.overexposedRatio in 0.49..0.51)
     }
+
+    @Test fun uniformRoiHasZeroStdDev() {
+        val px = IntArray(4) { argb(200, 190, 180) }
+        val res = RoiSampler.sample(px, 2, 2, RoiRect(0, 0, 2, 2))
+        assertEquals(0.0, res.stdDev, 1e-9)
+    }
+
+    @Test fun stdDevIsMaxOverChannels() {
+        // R 通道 100/200 → 标准差 50；G、B 恒定 → 0
+        val px = intArrayOf(argb(100, 80, 80), argb(200, 80, 80))
+        val res = RoiSampler.sample(px, 2, 1, RoiRect(0, 0, 2, 1))
+        assertEquals(50.0, res.stdDev, 1e-9)
+    }
 }

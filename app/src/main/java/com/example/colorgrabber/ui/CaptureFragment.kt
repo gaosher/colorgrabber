@@ -28,6 +28,7 @@ import com.example.colorgrabber.data.Measurement
 import com.example.colorgrabber.data.MeasurementRepository
 import com.example.colorgrabber.databinding.FragmentCaptureBinding
 import com.example.colorgrabber.wb.WbState
+import com.example.colorgrabber.wb.WhitePointQuality
 import com.example.colorgrabber.wb.WhiteBalanceEngine
 import kotlinx.coroutines.launch
 
@@ -178,10 +179,11 @@ class CaptureFragment : Fragment(), MenuProvider {
         if (pickAt in 0..frameCounter) {
             wb.pickWhite(res.mean)
             pickWhiteAtFrame = -1
+            val issues = WhitePointQuality.check(res)
             act.runOnUiThread {
                 if (_b == null) return@runOnUiThread
                 updateWbText()
-                Toast.makeText(act, "已点白校准，并锁定曝光/白平衡", Toast.LENGTH_SHORT).show()
+                b.root.showWhiteCheck(issues, "已点白校准，并锁定曝光/白平衡")
             }
         }
         if (pendingCapture) {

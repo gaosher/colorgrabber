@@ -28,6 +28,7 @@ import com.example.colorgrabber.data.MeasurementRepository
 import com.example.colorgrabber.databinding.FragmentPickBinding
 import com.example.colorgrabber.wb.Gains
 import com.example.colorgrabber.wb.WbState
+import com.example.colorgrabber.wb.WhitePointQuality
 import com.example.colorgrabber.wb.WhiteBalanceEngine
 import kotlinx.coroutines.launch
 
@@ -124,7 +125,11 @@ class PickFragment : Fragment(), MenuProvider {
         b.btnPickWhite.setOnClickListener {
             val res = sampleCurrent()
             if (res == null) Toast.makeText(requireContext(), "请先拖动方框到白背景", Toast.LENGTH_SHORT).show()
-            else { wb.pickWhite(res.mean); Toast.makeText(requireContext(), "已点白校准", Toast.LENGTH_SHORT).show(); showReadout() }
+            else {
+                wb.pickWhite(res.mean)
+                b.root.showWhiteCheck(WhitePointQuality.check(res), "已点白校准")
+                showReadout()
+            }
         }
         b.btnSetRef.setOnClickListener {
             if (sampleCurrent() == null) return@setOnClickListener
