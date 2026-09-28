@@ -12,16 +12,19 @@ data class RoiResult(val mean: Rgb, val overexposedRatio: Double, val stdDev: Do
 object RoiSampler {
     private const val OVEREXPOSED = 250
 
-    /** px 为 ARGB 行优先数组，宽 width 高 height；返回 ROI 内平均 RGB、过曝比例与标准差。 */
-    fun sample(px: IntArray, width: Int, height: Int, roi: RoiRect): RoiResult {
+    /**
+     * px 为 ARGB 行优先数组，宽 width 高 height；返回 ROI 内平均 RGB、过曝比例与标准差。
+     * step > 1 时每隔 step 个像素取一个，用于大面积快速估计。
+     */
+    fun sample(px: IntArray, width: Int, height: Int, roi: RoiRect, step: Int = 1): RoiResult {
         val x0 = roi.x.coerceIn(0, width)
         val y0 = roi.y.coerceIn(0, height)
         val x1 = (roi.x + roi.w).coerceIn(0, width)
         val y1 = (roi.y + roi.h).coerceIn(0, height)
         var sumR = 0L; var sumG = 0L; var sumB = 0L; var n = 0L; var over = 0L
         var sqR = 0L; var sqG = 0L; var sqB = 0L
-        for (y in y0 until y1) {
-            for (x in x0 until x1) {
+        for (y in y0 until y1 step step) {
+            for (x in x0 until x1 step step) {
                 val c = px[y * width + x]
                 val r = (c ushr 16) and 0xFF
                 val g = (c ushr 8) and 0xFF

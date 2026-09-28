@@ -28,9 +28,12 @@ import com.example.colorgrabber.data.MeasurementRepository
 import com.example.colorgrabber.databinding.FragmentPickBinding
 import com.example.colorgrabber.wb.Gains
 import com.example.colorgrabber.wb.WbState
+import com.example.colorgrabber.wb.WhitePointFinder
 import com.example.colorgrabber.wb.WhitePointQuality
 import com.example.colorgrabber.wb.WhiteBalanceEngine
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class PickFragment : Fragment(), MenuProvider {
     private var _b: FragmentPickBinding? = null
@@ -99,7 +102,7 @@ class PickFragment : Fragment(), MenuProvider {
             Toast.makeText(requireContext(), "无法打开图片", Toast.LENGTH_SHORT).show()
         }
         b.viewer.setBitmap(bitmap)
-        args.getIntArray(ARG_ROI)?.let { b.viewer.setInitialRoi(RoiRect(it[0], it[1], it[2], it[3])) }
+        args.getIntArray(ARG_ROI)?.let { b.viewer.setRoi(RoiRect(it[0], it[1], it[2], it[3])) }
         b.viewer.onRoiChanged = { r -> curRoi = r; showReadout() }
 
         b.wbHeader.setOnClickListener {
@@ -122,6 +125,7 @@ class PickFragment : Fragment(), MenuProvider {
             wb.bAdj = 0.5 + p / 200.0; b.bVal.text = "×%.2f".format(wb.bAdj); showReadout()
         })
 
+        b.btnSuggestWhite.setOnClickListener { suggestWhite() }
         b.btnPickWhite.setOnClickListener {
             val res = sampleCurrent()
             if (res == null) Toast.makeText(requireContext(), "请先拖动方框到白背景", Toast.LENGTH_SHORT).show()
@@ -168,6 +172,27 @@ class PickFragment : Fragment(), MenuProvider {
         }
         return requireContext().contentResolver.openInputStream(uri)?.use { s ->
             BitmapFactory.decodeStream(s, null, opts)
+        }
+    }
+
+    /** 自动找适合点白的区域并把取色框移过去；不直接校准，由用户确认后再点「点白校准」。 */
+    private fun suggestWhite() {
+        val bmp = bitmap ?: return
+        val near = if (curRoi.w > 0) Pair(curRoi.x + curRoi.w / 2f, curRoi.y + curRoi.h / 2f) else null
+        b.btnSuggestWhite.isEnabled = false
+        viewLifecycleOwner.lifecycleScope.launch {
+            val roi = withContext(Dispatchers.Default) {
+                val px = IntArray(bmp.width * bmp.height)
+                bmp.getPixels(px, 0, bmp.width, 0, 0, bmp.width, bmp.height)
+                WhitePointFinder.find(px, bmp.width, bmp.height, near)
+            }
+            b.btnSuggestWhite.isEnabled = true
+            if (roi == null) {
+                Toast.makeText(requireContext(), "未找到合适的白色区域，请手动选取", Toast.LENGTH_LONG).show()
+            } else {
+                b.viewer.setRoi(roi)
+                Toast.makeText(requireContext(), "已移到推荐白点，确认无误后点「点白校准」", Toast.LENGTH_LONG).show()
+            }
         }
     }
 
