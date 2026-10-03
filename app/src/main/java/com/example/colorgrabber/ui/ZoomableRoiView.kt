@@ -53,8 +53,8 @@ class ZoomableRoiView @JvmOverloads constructor(
         invalidate()
     }
 
-    /** 指定初始取色框（位图像素坐标），用于从历史记录还原。需在 setBitmap 前后均可调用。 */
-    fun setInitialRoi(r: RoiRect) {
+    /** 指定取色框（位图像素坐标），用于从历史还原或推荐白点。setBitmap 前后均可调用。 */
+    fun setRoi(r: RoiRect) {
         pendingRoi = r
         if (initialized) { applyRoiClamped(r); invalidate(); emit() }
     }
