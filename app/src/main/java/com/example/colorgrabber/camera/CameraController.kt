@@ -24,8 +24,8 @@ class CameraController(
     private var camera: androidx.camera.core.Camera? = null
     private var camera2Control: Camera2CameraControl? = null
 
-    /** 每帧回调：传出 ARGB 像素与宽高。节流由调用方做。 */
-    var onFrame: ((px: IntArray, width: Int, height: Int) -> Unit)? = null
+    /** 每帧回调：传出 ARGB 像素、宽高，以及把帧转正所需的顺时针旋转角度。节流由调用方做。 */
+    var onFrame: ((px: IntArray, width: Int, height: Int, rotationDegrees: Int) -> Unit)? = null
 
     @SuppressLint("UnsafeOptInUsageError")
     fun start() {
@@ -69,7 +69,7 @@ class CameraController(
                 }
                 offset += rowPadding
             }
-            onFrame?.invoke(px, w, h)
+            onFrame?.invoke(px, w, h, proxy.imageInfo.rotationDegrees)
         } finally {
             proxy.close()
         }

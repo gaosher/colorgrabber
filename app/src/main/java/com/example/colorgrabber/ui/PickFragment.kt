@@ -200,7 +200,7 @@ class PickFragment : Fragment(), MenuProvider {
         if (curRoi.w <= 0 || curRoi.h <= 0) return@let null
         val px = IntArray(bmp.width * bmp.height)
         bmp.getPixels(px, 0, bmp.width, 0, 0, bmp.width, bmp.height)
-        RoiSampler.sample(px, bmp.width, bmp.height, curRoi)
+        RoiSampler.sample(px, bmp.width, bmp.height, curRoi, rejectSigma = RoiSampler.DEFAULT_REJECT_SIGMA)
     }
 
     private fun showReadout() {

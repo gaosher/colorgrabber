@@ -25,6 +25,18 @@
         app:layout_constraintStart_toStartOf="@id/previewView"
         app:layout_constraintEnd_toEndOf="@id/previewView" />
 
+    <!-- 参考白框：样品框右侧，边长一半、间隙 1/4，与 RoiLayout.referenceFor 对应 -->
+    <View
+        android:id="@+id/refBox"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_marginStart="20dp"
+        android:background="@drawable/ref_frame"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="@id/roiBox"
+        app:layout_constraintBottom_toBottomOf="@id/roiBox"
+        app:layout_constraintStart_toEndOf="@id/roiBox" />
+
     <!-- 固定分割线：上方预览大小恒定 -->
     <androidx.constraintlayout.widget.Guideline
         android:id="@+id/panelGuide"
