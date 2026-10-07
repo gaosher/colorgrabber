@@ -7,6 +7,11 @@
         android:title="历史"
         app:showAsAction="ifRoom" />
     <item
+        android:id="@+id/action_ref_white"
+        android:title="参考白模式"
+        android:checkable="true"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/action_lock"
         android:title="锁定曝光/白平衡"
         android:checkable="true"

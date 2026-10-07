@@ -20,6 +20,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import com.example.colorgrabber.R
 import com.example.colorgrabber.camera.CameraController
+import com.example.colorgrabber.camera.RoiLayout
 import com.example.colorgrabber.camera.RoiRect
 import com.example.colorgrabber.camera.RoiSampler
 import com.example.colorgrabber.color.ColorAnalyzer
@@ -27,7 +28,9 @@ import com.example.colorgrabber.color.Rgb
 import com.example.colorgrabber.data.Measurement
 import com.example.colorgrabber.data.MeasurementRepository
 import com.example.colorgrabber.databinding.FragmentCaptureBinding
+import com.example.colorgrabber.wb.ReferenceWhiteTracker
 import com.example.colorgrabber.wb.WbState
+import com.example.colorgrabber.wb.WhiteIssue
 import com.example.colorgrabber.wb.WhitePointQuality
 import com.example.colorgrabber.wb.WhiteBalanceEngine
 import kotlinx.coroutines.launch
@@ -48,6 +51,9 @@ class CaptureFragment : Fragment(), MenuProvider {
     /** 到达该帧号后取当前取色框为白色（-1 表示无待办）；留出几帧让锁定生效。 */
     @Volatile private var pickWhiteAtFrame = -1
     @Volatile private var pendingCapture = false
+    /** 参考白模式：每帧用样品框旁的参考白框实时重算增益。 */
+    @Volatile private var refMode = false
+    private val refTracker = ReferenceWhiteTracker()
 
     private val permLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -81,6 +87,9 @@ class CaptureFragment : Fragment(), MenuProvider {
             locked = false
             Toast.makeText(requireContext(), "相机已重新启动，锁定已解除，请重新点白", Toast.LENGTH_LONG).show()
         }
+
+        refTracker.reset()
+        applyRefModeUi()
 
         repo = MeasurementRepository(requireContext().applicationContext)
         camera = CameraController(requireContext(), viewLifecycleOwner, b.previewView)
@@ -123,6 +132,7 @@ class CaptureFragment : Fragment(), MenuProvider {
     override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
         inflater.inflate(R.menu.menu_capture, menu)
         menu.findItem(R.id.action_lock)?.isChecked = locked
+        menu.findItem(R.id.action_ref_white)?.isChecked = refMode
     }
 
     override fun onMenuItemSelected(item: MenuItem): Boolean = when (item.itemId) {
@@ -131,6 +141,18 @@ class CaptureFragment : Fragment(), MenuProvider {
             Toast.makeText(requireContext(),
                 if (locked) "已锁定曝光/白平衡/对焦" else "已解锁，光线或构图变化后请重新点白",
                 Toast.LENGTH_SHORT).show()
+            true
+        }
+        R.id.action_ref_white -> {
+            refMode = !refMode
+            refTracker.reset()
+            pickWhiteAtFrame = -1
+            applyRefModeUi()
+            requireActivity().invalidateMenu()
+            Toast.makeText(requireContext(),
+                if (refMode) "参考白模式：把右侧小框对准白背景，每帧自动校准，无需点白或锁定"
+                else "已退出参考白模式，保留当前增益",
+                Toast.LENGTH_LONG).show()
             true
         }
         R.id.action_history -> {
@@ -161,19 +183,34 @@ class CaptureFragment : Fragment(), MenuProvider {
         if (!submitted) pickWhiteAtFrame = frameCounter
     }
 
-    private fun roiForFrame(w: Int, h: Int): RoiRect {
-        val size = (minOf(w, h) * 0.2).toInt()
-        return RoiRect((w - size) / 2, (h - size) / 2, size, size)
+    /** 参考白模式下显示参考白框、停用「点白校准」。 */
+    private fun applyRefModeUi() {
+        b.refBox.visibility = if (refMode) View.VISIBLE else View.GONE
+        b.btnPickWhite.isEnabled = !refMode
+        if (!refMode) updateWbText()
     }
 
-    private fun onFrame(px: IntArray, w: Int, h: Int) {
+    private fun onFrame(px: IntArray, w: Int, h: Int, rotation: Int) {
         frameCounter++
         if (frameCounter % 6 != 0) return   // 节流：每 6 帧算一次
         val act = activity ?: return
         if (!isAdded) return
-        val roi = roiForFrame(w, h)
-        val res = RoiSampler.sample(px, w, h, roi)
+        val roi = RoiLayout.sampleFor(w, h)
+        val res = RoiSampler.sample(px, w, h, roi, rejectSigma = RoiSampler.DEFAULT_REJECT_SIGMA)
         lastRawRgb = res.mean; lastRoi = roi
+
+        if (refMode) {
+            val refRoi = RoiLayout.referenceFor(roi, w, h, rotation)
+            val ref = RoiSampler.sample(px, w, h, refRoi, rejectSigma = RoiSampler.DEFAULT_REJECT_SIGMA)
+            refTracker.update(ref)?.let { wb.baseGains = it }
+            val status = refStatusText(refTracker.status)
+            act.runOnUiThread {
+                if (_b == null || !refMode) return@runOnUiThread
+                val g = wb.effectiveGains()
+                b.valWb.text = "$status · 增益 " +
+                    "${"%.2f".format(g.r)}/${"%.2f".format(g.g)}/${"%.2f".format(g.b)}"
+            }
+        }
 
         val pickAt = pickWhiteAtFrame
         if (pickAt in 0..frameCounter) {
@@ -213,6 +250,18 @@ class CaptureFragment : Fragment(), MenuProvider {
         }
     }
 
+    private fun refStatusText(s: ReferenceWhiteTracker.Status): String = when (s) {
+        is ReferenceWhiteTracker.Status.Ready -> "参考白 ✓"
+        is ReferenceWhiteTracker.Status.Settling -> "参考白稳定中 ${s.good}/${s.required}"
+        is ReferenceWhiteTracker.Status.Bad -> "参考白⚠" + s.issues.joinToString("、") {
+            when (it) {
+                WhiteIssue.OVEREXPOSED -> "过曝"
+                WhiteIssue.TOO_DARK -> "偏暗"
+                WhiteIssue.NON_UNIFORM -> "不均匀"
+            }
+        }
+    }
+
     /** 白平衡增益只在软件里施加（onFrame 中 normalize），这里仅刷新显示。 */
     private fun updateWbText() {
         if (_b == null) return
@@ -224,7 +273,7 @@ class CaptureFragment : Fragment(), MenuProvider {
     private fun onFrameCaptured(bmp: Bitmap) {
         // 把取景页的白平衡和取色框带到测量页，读数与拍摄时保持一致
         val gains = wb.effectiveGains()
-        val roi = roiForFrame(bmp.width, bmp.height)
+        val roi = RoiLayout.sampleFor(bmp.width, bmp.height)
         lifecycleScope.launch {
             val uri = repo.saveImageToAlbum(bmp, "CG_${System.currentTimeMillis()}")
             if (uri == null) {
