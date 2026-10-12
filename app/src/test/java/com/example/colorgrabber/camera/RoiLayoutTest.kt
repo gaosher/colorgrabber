@@ -30,6 +30,34 @@ class RoiLayoutTest {
         assertEquals(RoiRect(470, 390, 60, 60), RoiLayout.referenceFor(sample, w, h, 270))
     }
 
+    @Test fun customOffset_rotation0() {
+        // 屏幕偏移 (−1.5, 1)：样品中心左 180、下 120 → (320, 420)
+        assertEquals(RoiRect(290, 390, 60, 60), RoiLayout.referenceFor(sample, w, h, 0, -1.5, 1.0))
+    }
+
+    @Test fun customOffset_rotation90() {
+        // 90°：屏幕 (x, y) → 帧 (y, −x) = (1, 1.5)：右 120、下 180 → (620, 480)
+        assertEquals(RoiRect(590, 450, 60, 60), RoiLayout.referenceFor(sample, w, h, 90, -1.5, 1.0))
+    }
+
+    @Test fun customOffset_rotation270() {
+        // 270°：屏幕 (x, y) → 帧 (−y, x) = (−1, −1.5)：左 120、上 180 → (380, 120)
+        assertEquals(RoiRect(350, 90, 60, 60), RoiLayout.referenceFor(sample, w, h, 270, -1.5, 1.0))
+    }
+
+    @Test fun defaultOffsetMatchesExplicitDefault() {
+        assertEquals(
+            RoiLayout.referenceFor(sample, w, h, 90),
+            RoiLayout.referenceFor(sample, w, h, 90, RoiLayout.DEFAULT_REF_OFFSET_X, RoiLayout.DEFAULT_REF_OFFSET_Y)
+        )
+    }
+
+    @Test fun farDetection() {
+        assertEquals(false, RoiLayout.isFar(1.0, 0.0))
+        assertEquals(false, RoiLayout.isFar(2.0, 2.0))   // 距离 ≈ 2.83
+        assertEquals(true, RoiLayout.isFar(3.0, 1.0))    // 距离 ≈ 3.16
+    }
+
     @Test fun referenceClampedInsideFrame() {
         val edge = RoiRect(940, 240, 60, 60)
         val ref = RoiLayout.referenceFor(edge, w, h, 0)

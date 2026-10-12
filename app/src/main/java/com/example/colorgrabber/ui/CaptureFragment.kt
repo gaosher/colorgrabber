@@ -1,6 +1,8 @@
 package com.example.colorgrabber.ui
 
 import android.Manifest
+import android.annotation.SuppressLint
+import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.os.Bundle
@@ -8,6 +10,7 @@ import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
@@ -54,6 +57,9 @@ class CaptureFragment : Fragment(), MenuProvider {
     /** 参考白模式：每帧用样品框旁的参考白框实时重算增益。 */
     @Volatile private var refMode = false
     private val refTracker = ReferenceWhiteTracker()
+    /** 参考白框中心相对样品框中心的偏移（单位：样品框边长，屏幕方向），用户可拖动。 */
+    @Volatile private var refOffsetX = RoiLayout.DEFAULT_REF_OFFSET_X
+    @Volatile private var refOffsetY = RoiLayout.DEFAULT_REF_OFFSET_Y
 
     private val permLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -89,6 +95,8 @@ class CaptureFragment : Fragment(), MenuProvider {
         }
 
         refTracker.reset()
+        loadRefOffset()
+        setupRefBoxDrag()
         applyRefModeUi()
 
         repo = MeasurementRepository(requireContext().applicationContext)
@@ -133,6 +141,7 @@ class CaptureFragment : Fragment(), MenuProvider {
         inflater.inflate(R.menu.menu_capture, menu)
         menu.findItem(R.id.action_lock)?.isChecked = locked
         menu.findItem(R.id.action_ref_white)?.isChecked = refMode
+        menu.findItem(R.id.action_ref_reset)?.isVisible = refMode
     }
 
     override fun onMenuItemSelected(item: MenuItem): Boolean = when (item.itemId) {
@@ -153,6 +162,12 @@ class CaptureFragment : Fragment(), MenuProvider {
                 if (refMode) "参考白模式：把右侧小框对准白背景，每帧自动校准，无需点白或锁定"
                 else "已退出参考白模式，保留当前增益",
                 Toast.LENGTH_LONG).show()
+            true
+        }
+        R.id.action_ref_reset -> {
+            setRefOffset(RoiLayout.DEFAULT_REF_OFFSET_X, RoiLayout.DEFAULT_REF_OFFSET_Y)
+            saveRefOffset()
+            Toast.makeText(requireContext(), "参考白框已恢复默认位置", Toast.LENGTH_SHORT).show()
             true
         }
         R.id.action_history -> {
@@ -190,6 +205,75 @@ class CaptureFragment : Fragment(), MenuProvider {
         if (!refMode) updateWbText()
     }
 
+    /** 从偏好里读出上次拖动后的位置。 */
+    private fun loadRefOffset() {
+        val p = requireContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        refOffsetX = p.getFloat(KEY_REF_DX, RoiLayout.DEFAULT_REF_OFFSET_X.toFloat()).toDouble()
+        refOffsetY = p.getFloat(KEY_REF_DY, RoiLayout.DEFAULT_REF_OFFSET_Y.toFloat()).toDouble()
+        b.roiBox.post { if (_b != null) placeRefBox() }
+    }
+
+    private fun saveRefOffset() {
+        requireContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putFloat(KEY_REF_DX, refOffsetX.toFloat())
+            .putFloat(KEY_REF_DY, refOffsetY.toFloat())
+            .apply()
+    }
+
+    /** 更新偏移并移动参考白框；位置变了，参考白需要重新确认。 */
+    private fun setRefOffset(dx: Double, dy: Double) {
+        refOffsetX = dx; refOffsetY = dy
+        refTracker.reset()
+        placeRefBox()
+    }
+
+    /**
+     * 布局里 refBox 固定在默认位置（偏移 (1, 0)），拖动后的位置用 translation 表示：
+     * translation = (偏移 − 默认偏移) × 样品框边长。
+     */
+    private fun placeRefBox() {
+        val s = b.roiBox.width.toFloat()
+        if (s <= 0f) return
+        b.refBox.translationX = ((refOffsetX - RoiLayout.DEFAULT_REF_OFFSET_X) * s).toFloat()
+        b.refBox.translationY = ((refOffsetY - RoiLayout.DEFAULT_REF_OFFSET_Y) * s).toFloat()
+    }
+
+    /** 参考白框可拖动，范围限制在预览区域内；松手时保存位置。 */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun setupRefBoxDrag() {
+        var downX = 0f; var downY = 0f; var startTx = 0f; var startTy = 0f
+        b.refBox.setOnTouchListener { v, e ->
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = e.rawX; downY = e.rawY
+                    startTx = v.translationX; startTy = v.translationY
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val pv = b.previewView
+                    val tx = (startTx + e.rawX - downX)
+                        .coerceIn(pv.left - v.left.toFloat(), pv.right - v.right.toFloat())
+                    val ty = (startTy + e.rawY - downY)
+                        .coerceIn(pv.top - v.top.toFloat(), pv.bottom - v.bottom.toFloat())
+                    val s = b.roiBox.width.toDouble()
+                    if (s > 0) {
+                        setRefOffset(RoiLayout.DEFAULT_REF_OFFSET_X + tx / s,
+                                     RoiLayout.DEFAULT_REF_OFFSET_Y + ty / s)
+                    }
+                }
+                MotionEvent.ACTION_UP -> {
+                    saveRefOffset()
+                    if (RoiLayout.isFar(refOffsetX, refOffsetY)) {
+                        Toast.makeText(requireContext(),
+                            "参考白框离样品较远，可能受补光不均、画面边缘变暗影响，建议放在试管旁边",
+                            Toast.LENGTH_LONG).show()
+                    }
+                    v.performClick()
+                }
+            }
+            true
+        }
+    }
+
     private fun onFrame(px: IntArray, w: Int, h: Int, rotation: Int) {
         frameCounter++
         if (frameCounter % 6 != 0) return   // 节流：每 6 帧算一次
@@ -200,10 +284,12 @@ class CaptureFragment : Fragment(), MenuProvider {
         lastRawRgb = res.mean; lastRoi = roi
 
         if (refMode) {
-            val refRoi = RoiLayout.referenceFor(roi, w, h, rotation)
+            val dx = refOffsetX; val dy = refOffsetY
+            val refRoi = RoiLayout.referenceFor(roi, w, h, rotation, dx, dy)
             val ref = RoiSampler.sample(px, w, h, refRoi, rejectSigma = RoiSampler.DEFAULT_REJECT_SIGMA)
             refTracker.update(ref)?.let { wb.baseGains = it }
-            val status = refStatusText(refTracker.status)
+            val status = refStatusText(refTracker.status) +
+                if (RoiLayout.isFar(dx, dy)) "（离样品较远）" else ""
             act.runOnUiThread {
                 if (_b == null || !refMode) return@runOnUiThread
                 val g = wb.effectiveGains()
@@ -313,6 +399,9 @@ class CaptureFragment : Fragment(), MenuProvider {
     companion object {
         /** 锁定请求提交后再等的帧数，确保取白用的帧已处于锁定状态。 */
         private const val LOCK_SETTLE_FRAMES = 8
+        private const val PREFS = "capture"
+        private const val KEY_REF_DX = "ref_offset_x"
+        private const val KEY_REF_DY = "ref_offset_y"
     }
 
     override fun onDestroyView() {
