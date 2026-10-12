@@ -25,7 +25,7 @@
         app:layout_constraintStart_toStartOf="@id/previewView"
         app:layout_constraintEnd_toEndOf="@id/previewView" />
 
-    <!-- 参考白框：样品框右侧，边长一半、间隙 1/4，与 RoiLayout.referenceFor 对应 -->
+    <!-- 参考白框：默认在样品框右侧（边长一半、间隙 1/4），可拖动；拖动后的位置用 translation 表示，与 RoiLayout.referenceFor 对应 -->
     <View
         android:id="@+id/refBox"
         android:layout_width="40dp"

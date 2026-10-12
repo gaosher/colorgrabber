@@ -12,6 +12,11 @@
         android:checkable="true"
         app:showAsAction="never" />
     <item
+        android:id="@+id/action_ref_reset"
+        android:title="参考白框恢复默认位置"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/action_lock"
         android:title="锁定曝光/白平衡"
         android:checkable="true"
