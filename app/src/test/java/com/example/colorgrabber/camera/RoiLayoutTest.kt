@@ -5,61 +5,57 @@ import org.junit.Test
 
 class RoiLayoutTest {
 
-    private val w = 1000; private val h = 600
-    private val sample = RoiLayout.sampleFor(w, h)   // 边长 120，中心 (500, 300)
+    private val w = 1000; private val h = 600                // 短边 600
+    private val sample = RoiLayout.sampleFor(w, h)           // 默认 10% → 边长 60，中心 (500, 300)
 
-    @Test fun sampleIsCentered() {
-        assertEquals(RoiRect(440, 240, 120, 120), sample)
+    @Test fun sampleIsCenteredWithDefaultSize() {
+        assertEquals(RoiRect(470, 270, 60, 60), sample)
     }
 
-    @Test fun rotation0_referenceToTheRight() {
-        // 边长 60，中心在样品中心右侧 120 处 → (620, 300)
-        assertEquals(RoiRect(590, 270, 60, 60), RoiLayout.referenceFor(sample, w, h, 0))
+    @Test fun sampleFractionIsClamped() {
+        assertEquals(18, RoiLayout.sampleFor(w, h, 0.01).w)  // 下限 3%
+        assertEquals(120, RoiLayout.sampleFor(w, h, 0.5).w)  // 上限 20%
     }
 
-    @Test fun rotation90_referenceAbove() {
-        // 帧需顺时针转 90° 才正：屏幕右侧对应帧的 −y
-        assertEquals(RoiRect(470, 150, 60, 60), RoiLayout.referenceFor(sample, w, h, 90))
-    }
-
-    @Test fun rotation180_referenceToTheLeft() {
-        assertEquals(RoiRect(350, 270, 60, 60), RoiLayout.referenceFor(sample, w, h, 180))
-    }
-
-    @Test fun rotation270_referenceBelow() {
-        assertEquals(RoiRect(470, 390, 60, 60), RoiLayout.referenceFor(sample, w, h, 270))
+    @Test fun defaultReference_allRotations() {
+        // 默认偏移 (0.15, 0)：屏幕右侧 90 像素；参考白框与样品框同样大小
+        assertEquals(RoiRect(560, 270, 60, 60), RoiLayout.referenceFor(sample, w, h, 0))
+        assertEquals(RoiRect(470, 180, 60, 60), RoiLayout.referenceFor(sample, w, h, 90))   // 帧 −y
+        assertEquals(RoiRect(380, 270, 60, 60), RoiLayout.referenceFor(sample, w, h, 180))  // 帧 −x
+        assertEquals(RoiRect(470, 360, 60, 60), RoiLayout.referenceFor(sample, w, h, 270))  // 帧 +y
     }
 
     @Test fun customOffset_rotation0() {
-        // 屏幕偏移 (−1.5, 1)：样品中心左 180、下 120 → (320, 420)
-        assertEquals(RoiRect(290, 390, 60, 60), RoiLayout.referenceFor(sample, w, h, 0, -1.5, 1.0))
+        // 屏幕偏移 (−0.25, 0.1)：左 150、下 60 → 中心 (350, 360)
+        assertEquals(RoiRect(320, 330, 60, 60), RoiLayout.referenceFor(sample, w, h, 0, -0.25, 0.1))
     }
 
     @Test fun customOffset_rotation90() {
-        // 90°：屏幕 (x, y) → 帧 (y, −x) = (1, 1.5)：右 120、下 180 → (620, 480)
-        assertEquals(RoiRect(590, 450, 60, 60), RoiLayout.referenceFor(sample, w, h, 90, -1.5, 1.0))
+        // 90°：屏幕 (x, y) → 帧 (y, −x) = (0.1, 0.25)：右 60、下 150 → 中心 (560, 450)
+        assertEquals(RoiRect(530, 420, 60, 60), RoiLayout.referenceFor(sample, w, h, 90, -0.25, 0.1))
     }
 
     @Test fun customOffset_rotation270() {
-        // 270°：屏幕 (x, y) → 帧 (−y, x) = (−1, −1.5)：左 120、上 180 → (380, 120)
-        assertEquals(RoiRect(350, 90, 60, 60), RoiLayout.referenceFor(sample, w, h, 270, -1.5, 1.0))
+        // 270°：屏幕 (x, y) → 帧 (−y, x) = (−0.1, −0.25)：左 60、上 150 → 中心 (440, 150)
+        assertEquals(RoiRect(410, 120, 60, 60), RoiLayout.referenceFor(sample, w, h, 270, -0.25, 0.1))
     }
 
-    @Test fun defaultOffsetMatchesExplicitDefault() {
-        assertEquals(
-            RoiLayout.referenceFor(sample, w, h, 90),
-            RoiLayout.referenceFor(sample, w, h, 90, RoiLayout.DEFAULT_REF_OFFSET_X, RoiLayout.DEFAULT_REF_OFFSET_Y)
-        )
+    @Test fun referencePositionIndependentOfSampleSize() {
+        // 取色框调大后，参考白框中心不动（仍在 590），只是自身变大
+        val big = RoiLayout.sampleFor(w, h, 0.2)
+        val ref = RoiLayout.referenceFor(big, w, h, 0)
+        assertEquals(590, ref.x + ref.w / 2)
+        assertEquals(120, ref.w)
     }
 
     @Test fun farDetection() {
-        assertEquals(false, RoiLayout.isFar(1.0, 0.0))
-        assertEquals(false, RoiLayout.isFar(2.0, 2.0))   // 距离 ≈ 2.83
-        assertEquals(true, RoiLayout.isFar(3.0, 1.0))    // 距离 ≈ 3.16
+        assertEquals(false, RoiLayout.isFar(0.15, 0.0))
+        assertEquals(false, RoiLayout.isFar(0.3, 0.3))   // ≈ 0.42
+        assertEquals(true, RoiLayout.isFar(0.5, 0.2))    // ≈ 0.54
     }
 
     @Test fun referenceClampedInsideFrame() {
-        val edge = RoiRect(940, 240, 60, 60)
+        val edge = RoiRect(940, 270, 60, 60)
         val ref = RoiLayout.referenceFor(edge, w, h, 0)
         assertEquals(w - ref.w, ref.x)
     }

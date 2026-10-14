@@ -13,6 +13,7 @@ import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.widget.SeekBar
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -23,6 +24,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import com.example.colorgrabber.R
 import com.example.colorgrabber.camera.CameraController
+import com.example.colorgrabber.camera.ReadingSmoother
 import com.example.colorgrabber.camera.RoiLayout
 import com.example.colorgrabber.camera.RoiRect
 import com.example.colorgrabber.camera.RoiSampler
@@ -37,6 +39,7 @@ import com.example.colorgrabber.wb.WhiteIssue
 import com.example.colorgrabber.wb.WhitePointQuality
 import com.example.colorgrabber.wb.WhiteBalanceEngine
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 class CaptureFragment : Fragment(), MenuProvider {
     private var _b: FragmentCaptureBinding? = null
@@ -57,9 +60,17 @@ class CaptureFragment : Fragment(), MenuProvider {
     /** 参考白模式：每帧用样品框旁的参考白框实时重算增益。 */
     @Volatile private var refMode = false
     private val refTracker = ReferenceWhiteTracker()
-    /** 参考白框中心相对样品框中心的偏移（单位：样品框边长，屏幕方向），用户可拖动。 */
+    /** 参考白框中心相对样品框中心的偏移（单位：分析帧短边，屏幕方向），用户可拖动。 */
     @Volatile private var refOffsetX = RoiLayout.DEFAULT_REF_OFFSET_X
     @Volatile private var refOffsetY = RoiLayout.DEFAULT_REF_OFFSET_Y
+    /** 取色框边长占分析帧短边的比例，用户可调。 */
+    @Volatile private var sampleFraction = RoiLayout.DEFAULT_SAMPLE_FRACTION
+    /** 最近一帧的尺寸与旋转，用于把帧上的比例换算成预览上的像素。 */
+    @Volatile private var frameW = 0
+    @Volatile private var frameH = 0
+    @Volatile private var frameRot = 0
+    private val sampleSmoother = ReadingSmoother()
+    private val refSmoother = ReadingSmoother()
 
     private val permLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -95,9 +106,12 @@ class CaptureFragment : Fragment(), MenuProvider {
         }
 
         refTracker.reset()
-        loadRefOffset()
+        resetSmoothing()
+        loadPrefs()
+        setupSampleSizeSeek()
         setupRefBoxDrag()
         applyRefModeUi()
+        b.previewView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> layoutBoxes() }
 
         repo = MeasurementRepository(requireContext().applicationContext)
         camera = CameraController(requireContext(), viewLifecycleOwner, b.previewView)
@@ -155,6 +169,7 @@ class CaptureFragment : Fragment(), MenuProvider {
         R.id.action_ref_white -> {
             refMode = !refMode
             refTracker.reset()
+            resetSmoothing()
             pickWhiteAtFrame = -1
             applyRefModeUi()
             requireActivity().invalidateMenu()
@@ -166,7 +181,7 @@ class CaptureFragment : Fragment(), MenuProvider {
         }
         R.id.action_ref_reset -> {
             setRefOffset(RoiLayout.DEFAULT_REF_OFFSET_X, RoiLayout.DEFAULT_REF_OFFSET_Y)
-            saveRefOffset()
+            savePrefs()
             Toast.makeText(requireContext(), "参考白框已恢复默认位置", Toast.LENGTH_SHORT).show()
             true
         }
@@ -205,37 +220,85 @@ class CaptureFragment : Fragment(), MenuProvider {
         if (!refMode) updateWbText()
     }
 
-    /** 从偏好里读出上次拖动后的位置。 */
-    private fun loadRefOffset() {
+    /** 从偏好里读出取色框大小与参考白框位置。 */
+    private fun loadPrefs() {
         val p = requireContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        refOffsetX = p.getFloat(KEY_REF_DX, RoiLayout.DEFAULT_REF_OFFSET_X.toFloat()).toDouble()
-        refOffsetY = p.getFloat(KEY_REF_DY, RoiLayout.DEFAULT_REF_OFFSET_Y.toFloat()).toDouble()
-        b.roiBox.post { if (_b != null) placeRefBox() }
+        sampleFraction = RoiLayout.clampFraction(
+            p.getFloat(KEY_SAMPLE_FRACTION, RoiLayout.DEFAULT_SAMPLE_FRACTION.toFloat()).toDouble())
+        refOffsetX = p.getFloat(KEY_REF_X, RoiLayout.DEFAULT_REF_OFFSET_X.toFloat()).toDouble()
+        refOffsetY = p.getFloat(KEY_REF_Y, RoiLayout.DEFAULT_REF_OFFSET_Y.toFloat()).toDouble()
     }
 
-    private fun saveRefOffset() {
+    private fun savePrefs() {
         requireContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putFloat(KEY_REF_DX, refOffsetX.toFloat())
-            .putFloat(KEY_REF_DY, refOffsetY.toFloat())
+            .putFloat(KEY_SAMPLE_FRACTION, sampleFraction.toFloat())
+            .putFloat(KEY_REF_X, refOffsetX.toFloat())
+            .putFloat(KEY_REF_Y, refOffsetY.toFloat())
             .apply()
+    }
+
+    private fun resetSmoothing() {
+        sampleSmoother.reset(); refSmoother.reset()
+    }
+
+    /** 取色框大小滑块：3%～20%（分析帧短边），松手时保存。 */
+    private fun setupSampleSizeSeek() {
+        val toProgress = { f: Double -> (f * 100).roundToInt() - (RoiLayout.MIN_SAMPLE_FRACTION * 100).roundToInt() }
+        b.sizeSeek.max = toProgress(RoiLayout.MAX_SAMPLE_FRACTION)
+        b.sizeSeek.progress = toProgress(sampleFraction)
+        b.sizeVal.text = "${(sampleFraction * 100).roundToInt()}%"
+        b.sizeSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                sampleFraction = RoiLayout.clampFraction(RoiLayout.MIN_SAMPLE_FRACTION + p / 100.0)
+                b.sizeVal.text = "${(sampleFraction * 100).roundToInt()}%"
+                refTracker.reset()
+                resetSmoothing()
+                layoutBoxes()
+            }
+            override fun onStartTrackingTouch(sb: SeekBar?) {}
+            override fun onStopTrackingTouch(sb: SeekBar?) { savePrefs() }
+        })
     }
 
     /** 更新偏移并移动参考白框；位置变了，参考白需要重新确认。 */
     private fun setRefOffset(dx: Double, dy: Double) {
         refOffsetX = dx; refOffsetY = dy
         refTracker.reset()
-        placeRefBox()
+        refSmoother.reset()
+        layoutBoxes()
     }
 
     /**
-     * 布局里 refBox 固定在默认位置（偏移 (1, 0)），拖动后的位置用 translation 表示：
-     * translation = (偏移 − 默认偏移) × 样品框边长。
+     * 分析帧短边在预览上对应的像素数。PreviewView 默认 FILL_CENTER（铺满并居中裁剪），
+     * 缩放比例取宽、高两个方向中较大者；尚未收到帧时先按预览宽度近似。
      */
-    private fun placeRefBox() {
-        val s = b.roiBox.width.toFloat()
-        if (s <= 0f) return
-        b.refBox.translationX = ((refOffsetX - RoiLayout.DEFAULT_REF_OFFSET_X) * s).toFloat()
-        b.refBox.translationY = ((refOffsetY - RoiLayout.DEFAULT_REF_OFFSET_Y) * s).toFloat()
+    private fun shortSidePx(): Float {
+        val vw = b.previewView.width.toFloat(); val vh = b.previewView.height.toFloat()
+        if (vw <= 0f || vh <= 0f) return 0f
+        val fw = frameW; val fh = frameH
+        if (fw <= 0 || fh <= 0) return vw
+        val rotated = frameRot % 180 != 0
+        val uprightW = if (rotated) fh else fw
+        val uprightH = if (rotated) fw else fh
+        val scale = maxOf(vw / uprightW, vh / uprightH)
+        return minOf(fw, fh) * scale
+    }
+
+    /** 按当前比例摆放取色框与参考白框（两者在布局里都居中于预览，参考白用 translation 平移）。 */
+    private fun layoutBoxes() {
+        if (_b == null) return
+        val k = shortSidePx()
+        if (k <= 0f) return
+        val size = maxOf(1, (sampleFraction * k).roundToInt())
+        for (v in listOf(b.roiBox, b.refBox)) {
+            val lp = v.layoutParams
+            if (lp.width != size || lp.height != size) {
+                lp.width = size; lp.height = size; v.layoutParams = lp
+            }
+        }
+        b.refBox.translationX = (refOffsetX * k).toFloat()
+        b.refBox.translationY = (refOffsetY * k).toFloat()
     }
 
     /** 参考白框可拖动，范围限制在预览区域内；松手时保存位置。 */
@@ -249,19 +312,17 @@ class CaptureFragment : Fragment(), MenuProvider {
                     startTx = v.translationX; startTy = v.translationY
                 }
                 MotionEvent.ACTION_MOVE -> {
+                    // refBox 在布局里居中于预览，translation 的允许范围是预览与框的尺寸差的一半
                     val pv = b.previewView
-                    val tx = (startTx + e.rawX - downX)
-                        .coerceIn(pv.left - v.left.toFloat(), pv.right - v.right.toFloat())
-                    val ty = (startTy + e.rawY - downY)
-                        .coerceIn(pv.top - v.top.toFloat(), pv.bottom - v.bottom.toFloat())
-                    val s = b.roiBox.width.toDouble()
-                    if (s > 0) {
-                        setRefOffset(RoiLayout.DEFAULT_REF_OFFSET_X + tx / s,
-                                     RoiLayout.DEFAULT_REF_OFFSET_Y + ty / s)
-                    }
+                    val maxTx = (pv.width - v.width) / 2f
+                    val maxTy = (pv.height - v.height) / 2f
+                    val tx = (startTx + e.rawX - downX).coerceIn(-maxTx, maxTx)
+                    val ty = (startTy + e.rawY - downY).coerceIn(-maxTy, maxTy)
+                    val k = shortSidePx().toDouble()
+                    if (k > 0) setRefOffset(tx / k, ty / k)
                 }
                 MotionEvent.ACTION_UP -> {
-                    saveRefOffset()
+                    savePrefs()
                     if (RoiLayout.isFar(refOffsetX, refOffsetY)) {
                         Toast.makeText(requireContext(),
                             "参考白框离样品较远，可能受补光不均、画面边缘变暗影响，建议放在试管旁边",
@@ -279,15 +340,22 @@ class CaptureFragment : Fragment(), MenuProvider {
         if (frameCounter % 6 != 0) return   // 节流：每 6 帧算一次
         val act = activity ?: return
         if (!isAdded) return
-        val roi = RoiLayout.sampleFor(w, h)
+        if (w != frameW || h != frameH || rotation != frameRot) {
+            frameW = w; frameH = h; frameRot = rotation
+            act.runOnUiThread { layoutBoxes() }
+        }
+        val roi = RoiLayout.sampleFor(w, h, sampleFraction)
         val res = RoiSampler.sample(px, w, h, roi, rejectSigma = RoiSampler.DEFAULT_REJECT_SIGMA)
-        lastRawRgb = res.mean; lastRoi = roi
+        // 显示与记录用平滑后的读数；点白、质量检查仍用本帧结果
+        val raw = sampleSmoother.add(res.mean)
+        lastRawRgb = raw; lastRoi = roi
 
         if (refMode) {
             val dx = refOffsetX; val dy = refOffsetY
             val refRoi = RoiLayout.referenceFor(roi, w, h, rotation, dx, dy)
             val ref = RoiSampler.sample(px, w, h, refRoi, rejectSigma = RoiSampler.DEFAULT_REJECT_SIGMA)
-            refTracker.update(ref)?.let { wb.baseGains = it }
+            val refSmoothed = ref.copy(mean = refSmoother.add(ref.mean))
+            refTracker.update(refSmoothed)?.let { wb.baseGains = it }
             val status = refStatusText(refTracker.status) +
                 if (RoiLayout.isFar(dx, dy)) "（离样品较远）" else ""
             act.runOnUiThread {
@@ -317,7 +385,7 @@ class CaptureFragment : Fragment(), MenuProvider {
         }
 
         val gains = wb.effectiveGains()
-        val norm = WhiteBalanceEngine.normalize(res.mean, gains)
+        val norm = WhiteBalanceEngine.normalize(raw, gains)
         lastNormRgb = norm
         val hsv = ColorAnalyzer.toHsv(norm)
         val lab = ColorAnalyzer.toLab(norm)
@@ -359,7 +427,7 @@ class CaptureFragment : Fragment(), MenuProvider {
     private fun onFrameCaptured(bmp: Bitmap) {
         // 把取景页的白平衡和取色框带到测量页，读数与拍摄时保持一致
         val gains = wb.effectiveGains()
-        val roi = RoiLayout.sampleFor(bmp.width, bmp.height)
+        val roi = RoiLayout.sampleFor(bmp.width, bmp.height, sampleFraction)
         lifecycleScope.launch {
             val uri = repo.saveImageToAlbum(bmp, "CG_${System.currentTimeMillis()}")
             if (uri == null) {
@@ -400,8 +468,10 @@ class CaptureFragment : Fragment(), MenuProvider {
         /** 锁定请求提交后再等的帧数，确保取白用的帧已处于锁定状态。 */
         private const val LOCK_SETTLE_FRAMES = 8
         private const val PREFS = "capture"
-        private const val KEY_REF_DX = "ref_offset_x"
-        private const val KEY_REF_DY = "ref_offset_y"
+        // 1.5 起偏移改以分析帧短边为单位，换用新键名，旧版保存的位置不再沿用
+        private const val KEY_REF_X = "ref_pos_x"
+        private const val KEY_REF_Y = "ref_pos_y"
+        private const val KEY_SAMPLE_FRACTION = "sample_fraction"
     }
 
     override fun onDestroyView() {

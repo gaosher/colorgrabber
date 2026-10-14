@@ -25,17 +25,17 @@
         app:layout_constraintStart_toStartOf="@id/previewView"
         app:layout_constraintEnd_toEndOf="@id/previewView" />
 
-    <!-- 参考白框：默认在样品框右侧（边长一半、间隙 1/4），可拖动；拖动后的位置用 translation 表示，与 RoiLayout.referenceFor 对应 -->
+    <!-- 参考白框：与取色框一样居中于预览，位置用 translation 平移（偏移见 RoiLayout.referenceFor），大小随取色框 -->
     <View
         android:id="@+id/refBox"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
-        android:layout_marginStart="20dp"
+        android:layout_width="80dp"
+        android:layout_height="80dp"
         android:background="@drawable/ref_frame"
         android:visibility="gone"
-        app:layout_constraintTop_toTopOf="@id/roiBox"
-        app:layout_constraintBottom_toBottomOf="@id/roiBox"
-        app:layout_constraintStart_toEndOf="@id/roiBox" />
+        app:layout_constraintTop_toTopOf="@id/previewView"
+        app:layout_constraintBottom_toBottomOf="@id/previewView"
+        app:layout_constraintStart_toStartOf="@id/previewView"
+        app:layout_constraintEnd_toEndOf="@id/previewView" />
 
     <!-- 固定分割线：上方预览大小恒定 -->
     <androidx.constraintlayout.widget.Guideline
@@ -108,6 +108,12 @@
                     <TextView style="@style/RoLabel" android:text="白平衡" />
                     <TextView android:id="@+id/valWb" style="@style/RoValue" android:text="未校准" />
                 </LinearLayout>
+
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="6dp">
+                    <TextView style="@style/SliderLabel" android:text="取色框大小（小框读数已做平滑）" />
+                    <TextView android:id="@+id/sizeVal" style="@style/SliderValue" android:text="10%" />
+                </LinearLayout>
+                <SeekBar android:id="@+id/sizeSeek" android:layout_width="match_parent" android:layout_height="wrap_content" android:max="17" android:progress="7" />
 
                 <View style="@style/HLine" />
 

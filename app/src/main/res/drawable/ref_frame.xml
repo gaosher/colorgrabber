@@ -1,6 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <solid android:color="@android:color/transparent" />
-    <stroke android:width="2dp" android:color="#FFFFFF" android:dashWidth="4dp" android:dashGap="3dp" />
-</shape>
+<!-- 参考白框：虚线外框为实际取样范围，中心圆点标出位置 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@android:color/transparent" />
+            <stroke android:width="2dp" android:color="#FFFFFF" android:dashWidth="4dp" android:dashGap="3dp" />
+        </shape>
+    </item>
+    <item android:width="6dp" android:height="6dp" android:gravity="center">
+        <shape android:shape="oval">
+            <solid android:color="#FFFFFF" />
+            <stroke android:width="1dp" android:color="#99000000" />
+        </shape>
+    </item>
+</layer-list>
